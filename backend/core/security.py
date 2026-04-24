@@ -1,12 +1,14 @@
 import hashlib
 import os
 from dotenv import load_dotenv
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
+import bcrypt
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlmodel import Session
 
 from db.session import get_session
@@ -17,21 +19,42 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hasher = PasswordHasher()
 bearer_scheme = HTTPBearer()
 
 # ---------- Password ----------
 def normalize_password(password: str) -> str:
-    """Normalize password by hashing with SHA256 to avoid bcrypt length issues"""
+    """Normalize passwords before hashing to keep legacy bcrypt compatibility."""
     return hashlib.sha256(password.encode()).hexdigest()
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt (after SHA256 normalization)"""
-    return pwd_context.hash(normalize_password(password))
+    """Hash a password using Argon2."""
+    return password_hasher.hash(normalize_password(password))
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
-    return pwd_context.verify(normalize_password(plain_password), hashed_password)
+    """Verify a password against either Argon2 or legacy bcrypt hashes."""
+    normalized = normalize_password(plain_password)
+
+    if hashed_password.startswith("$argon2"):
+        try:
+            return password_hasher.verify(hashed_password, normalized)
+        except (VerifyMismatchError, InvalidHashError):
+            return False
+
+    if hashed_password.startswith("$2"):
+        return bcrypt.checkpw(normalized.encode(), hashed_password.encode())
+
+    return False
+
+
+def needs_password_rehash(hashed_password: str) -> bool:
+    if hashed_password.startswith("$argon2"):
+        try:
+            return password_hasher.check_needs_rehash(hashed_password)
+        except InvalidHashError:
+            return True
+
+    return True
 
 # ---------- JWT ----------
 def create_access_token(data: dict):

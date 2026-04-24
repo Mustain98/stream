@@ -6,6 +6,7 @@ from models import User
 from core.security import (
     hash_password,
     verify_password,
+    needs_password_rehash,
     create_access_token,
     get_current_user,
 )
@@ -52,6 +53,11 @@ def login(user: UserLogin, session: Session = Depends(get_session)):
 
     if not verify_password(user.password, db_user.password_hash):
         raise HTTPException(status_code=400, detail="Invalid credentials")
+
+    if needs_password_rehash(db_user.password_hash):
+        db_user.password_hash = hash_password(user.password)
+        session.add(db_user)
+        session.commit()
 
     token = create_access_token({"sub": db_user.id})
 
