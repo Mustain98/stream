@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python backend
+__pycache__/
+*.py[cod]
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+backend/venv/
+
+# Node / Next.js frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# Editor / IDE
+.idea/
+.vscode/
