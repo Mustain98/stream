@@ -30,3 +30,5 @@ frontend/pnpm-debug.log*
 # Editor / IDE
 .idea/
 .vscode/
+
+PROJECT_GUIDE.md

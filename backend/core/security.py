@@ -3,7 +3,6 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
-import bcrypt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends, HTTPException, status
@@ -40,9 +39,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             return password_hasher.verify(hashed_password, normalized)
         except (VerifyMismatchError, InvalidHashError):
             return False
-
-    if hashed_password.startswith("$2"):
-        return bcrypt.checkpw(normalized.encode(), hashed_password.encode())
 
     return False
 

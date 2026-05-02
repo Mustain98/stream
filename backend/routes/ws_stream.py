@@ -29,6 +29,7 @@ async def websocket_stream(websocket: WebSocket, stream_id: str):
     await websocket.accept()
 
     await manager.connect(stream_id, websocket, user_id, role)
+    await manager.broadcast_viewer_count(stream_id)
 
     if role == "broadcaster":
         await manager.send_to_role(
@@ -127,7 +128,7 @@ async def websocket_stream(websocket: WebSocket, stream_id: str):
 
     except WebSocketDisconnect:
         manager.disconnect(stream_id, websocket)
-
+        manager.broadcast_viewer_count(stream_id)
     except Exception as e:
         print("WS error:", e)
         manager.disconnect(stream_id, websocket)

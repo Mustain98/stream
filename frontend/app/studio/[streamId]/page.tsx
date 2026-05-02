@@ -113,6 +113,10 @@ function StudioRoomContent() {
               await peer.addIceCandidate(new RTCIceCandidate(candidate));
             }
           }
+          if (message.type === "viewer-count" && message.data) {
+            const d = message.data as { count: number };
+            setViewerCount(d.count);
+          }
         };
 
         socket.onerror = () => {

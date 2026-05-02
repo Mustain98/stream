@@ -38,5 +38,15 @@ class ConnectionManager:
             if conn["ws"] != sender_ws:
                 await conn["ws"].send_json(message)
 
+    async def broadcast_viewer_count(self, stream_id: str):
+        count = self.viewer_count(stream_id)
+        message = {"type": "viewer-count", "data": {"count": count}}
+        for conn in self.active.get(stream_id, []):
+            await conn["ws"].send_json(message)
+
+    def viewer_count(self, stream_id: str) -> int:
+        return sum(
+            1 for c in self.active.get(stream_id, []) if c["role"] == "viewer"
+        )
 
 manager = ConnectionManager()

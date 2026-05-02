@@ -147,6 +147,10 @@ function WatchContent() {
             const candidate = message.data as RTCIceCandidateInit;
             await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
           }
+          if (message.type === "viewer-count" && message.data) {
+            const d = message.data as { count: number };
+            setViewerCount(d.count);
+          }
         };
 
         socket.onerror = () => {
