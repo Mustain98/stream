@@ -42,11 +42,8 @@ def get(
     if not stream:
         raise HTTPException(status_code=404, detail="Not found")
 
-    viewers = get_viewer_count(session, stream_id)
-
     return {
         "stream": stream,
-        "viewer_count": viewers
     }
 
 

@@ -1,36 +1,52 @@
-import uuid
+# backend/core/ws_ticket.py
+
+import os
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from jose import JWTError, jwt
+
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
+SFU_TICKET_EXPIRE_SECONDS = 120
 
 
-TICKET_TTL = 120  # seconds
+def create_sfu_ticket(user_id: str, stream_id: str, role: str):
+    """
+    Create a short-lived signed token for joining the SFU server.
 
-WS_TICKETS = {}
+    This token is created by the main backend and verified by the SFU server.
+    """
 
-def create_ws_ticket(user_id: str, stream_id: str, role: str):
-    ticket = str(uuid.uuid4())
+    expire = datetime.utcnow() + timedelta(seconds=SFU_TICKET_EXPIRE_SECONDS)
 
-    WS_TICKETS[ticket] = {
-        "user_id": user_id,
+    payload = {
+        "sub": user_id,
         "stream_id": stream_id,
         "role": role,
-        "expires": datetime.utcnow() + timedelta(seconds=TICKET_TTL)
+        "type": "sfu_ticket",
+        "exp": expire,
     }
 
-    return ticket
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def verify_ws_ticket(ticket: str):
-    data = WS_TICKETS.get(ticket)
+def verify_sfu_ticket(token: str):
+    """
+    Optional verification function.
+    Main backend may use this for debugging.
+    SFU server should also have the same verification logic.
+    """
 
-    if not data:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        if payload.get("type") != "sfu_ticket":
+            return None
+
+        return payload
+
+    except JWTError:
         return None
-
-    if data["expires"] < datetime.utcnow():
-        WS_TICKETS.pop(ticket, None)
-        return None
-
-    return data
-
-
-def consume_ws_ticket(ticket: str):
-    return WS_TICKETS.pop(ticket, None)

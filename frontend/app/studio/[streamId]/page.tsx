@@ -6,14 +6,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
-import { api, WS_BASE_URL } from "../../../lib/api";
-import type { StreamDetailsResponse, StreamRecord } from "../../../lib/types";
+import { api } from "../../../lib/api";
+import type { StreamRecord } from "../../../lib/types";
 
-type SignalMessage = {
+type SfuMessage = {
   type: string;
-  from: string;
-  to?: string;
-  data?: RTCSessionDescriptionInit | RTCIceCandidateInit | { userId?: string };
+  sdp?: string;
+  candidate?: RTCIceCandidateInit | null;
+  message?: string;
+  reason?: string;
 };
 
 export default function StudioRoomPage() {
@@ -26,12 +27,15 @@ export default function StudioRoomPage() {
 
 function StudioRoomContent() {
   const params = useParams<{ streamId: string }>();
-  const { token, user } = useSession();
   const streamId = params.streamId;
+
+  const { token, user } = useSession();
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
-  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+
   const [stream, setStream] = useState<StreamRecord | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [status, setStatus] = useState("Loading room...");
@@ -39,6 +43,7 @@ function StudioRoomContent() {
   const [cameraReady, setCameraReady] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
+  const [isConnectedToSfu, setIsConnectedToSfu] = useState(false);
 
   const isOwner = stream?.broadcaster_id === user?.id;
 
@@ -48,9 +53,10 @@ function StudioRoomContent() {
         const response = await api.getStream(streamId);
         setStream(response.stream);
         setViewerCount(response.viewer_count);
+
         setStatus(
           response.stream.status === "live"
-            ? "Stream is live. Enable camera to start serving viewers."
+            ? "Stream is live. Enable camera to publish to the SFU."
             : "Stream is offline. Start it when you are ready."
         );
       } catch (roomError) {
@@ -69,92 +75,45 @@ function StudioRoomContent() {
   }, [cameraReady]);
 
   useEffect(() => {
-    if (!token || !stream || stream.status !== "live" || !cameraReady || !isOwner) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const connectRoom = async () => {
-      try {
-        const ticket = await api.getWsTicket(token, streamId);
-        if (cancelled) {
-          return;
-        }
-
-        const socket = new WebSocket(`${WS_BASE_URL}/ws/stream/${streamId}?ticket=${ticket.ticket}`);
-        socketRef.current = socket;
-
-        socket.onopen = () => {
-          setStatus("Broadcast room connected. Waiting for viewers.");
-        };
-
-        socket.onmessage = async (event) => {
-          const message = JSON.parse(event.data) as SignalMessage;
-
-          if (message.type === "viewer-ready" && message.from) {
-            setStatus("Viewer joined. Negotiating media...");
-            await createAndSendOffer(message.from);
-          }
-
-          if (message.type === "answer" && message.from) {
-            const peer = peersRef.current.get(message.from);
-            const answer = message.data as RTCSessionDescriptionInit | undefined;
-            if (peer && answer) {
-              await peer.setRemoteDescription(new RTCSessionDescription(answer));
-              setStatus("Viewer connected.");
-            }
-          }
-
-          if (message.type === "ice" && message.from) {
-            const peer = peersRef.current.get(message.from);
-            const candidate = message.data as RTCIceCandidateInit | undefined;
-            if (peer && candidate) {
-              await peer.addIceCandidate(new RTCIceCandidate(candidate));
-            }
-          }
-          if (message.type === "viewer-count" && message.data) {
-            const d = message.data as { count: number };
-            setViewerCount(d.count);
-          }
-        };
-
-        socket.onerror = () => {
-          setError("Broadcast websocket disconnected unexpectedly.");
-        };
-
-        socket.onclose = () => {
-          socketRef.current = null;
-        };
-      } catch (connectError) {
-        const message =
-          connectError instanceof Error ? connectError.message : "Failed to connect broadcast room";
-        setError(message);
-      }
-    };
-
-    void connectRoom();
-
     return () => {
-      cancelled = true;
-      socketRef.current?.close();
-      socketRef.current = null;
-      for (const peer of peersRef.current.values()) {
-        peer.close();
-      }
-      peersRef.current.clear();
+      cleanupSfu();
+      mediaRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [cameraReady, isOwner, stream, streamId, token]);
+  }, []);
 
-  const ensurePeer = (viewerId: string) => {
-    const existing = peersRef.current.get(viewerId);
-    if (existing) {
-      return existing;
-    }
-
+  const createPeerConnection = () => {
     const peer = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
+
+    peer.onicecandidate = (event) => {
+      if (socketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      socketRef.current.send(
+        JSON.stringify({
+          type: "ice",
+          candidate: event.candidate ? event.candidate.toJSON() : null,
+        })
+      );
+    };
+
+    peer.onconnectionstatechange = () => {
+      setStatus(`SFU connection state: ${peer.connectionState}`);
+
+      if (
+        peer.connectionState === "failed" ||
+        peer.connectionState === "closed" ||
+        peer.connectionState === "disconnected"
+      ) {
+        setIsConnectedToSfu(false);
+      }
+    };
+
+    peer.oniceconnectionstatechange = () => {
+      console.log("Publisher ICE state:", peer.iceConnectionState);
+    };
 
     mediaRef.current?.getTracks().forEach((track) => {
       if (mediaRef.current) {
@@ -162,54 +121,147 @@ function StudioRoomContent() {
       }
     });
 
-    peer.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(
-          JSON.stringify({
-            type: "ice",
-            to: viewerId,
-            data: event.candidate.toJSON(),
-          })
-        );
-      }
-    };
-
-    peer.onconnectionstatechange = () => {
-      if (peer.connectionState === "failed" || peer.connectionState === "closed") {
-        peer.close();
-        peersRef.current.delete(viewerId);
-      }
-    };
-
-    peersRef.current.set(viewerId, peer);
+    peerRef.current = peer;
     return peer;
   };
 
-  const createAndSendOffer = async (viewerId: string) => {
-    const peer = ensurePeer(viewerId);
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
+  const connectPublisherToSfu = async () => {
+    if (!token) {
+      setError("Missing auth token.");
+      return;
+    }
 
-    socketRef.current?.send(
-      JSON.stringify({
-        type: "offer",
-        to: viewerId,
-        data: offer,
-      })
-    );
+    if (!mediaRef.current) {
+      setError("Enable camera before connecting to SFU.");
+      return;
+    }
+
+    if (!stream || stream.status !== "live") {
+      setError("Start the stream before connecting to SFU.");
+      return;
+    }
+
+    if (!isOwner) {
+      setError("Only the broadcaster can publish this stream.");
+      return;
+    }
+
+    if (socketRef.current || peerRef.current) {
+      return;
+    }
+
+    try {
+      setError(null);
+      setStatus("Requesting SFU ticket from main backend...");
+
+      const ticket = await api.getSfuTicket(token, streamId);
+
+      const socket = new WebSocket(ticket.sfuUrl);
+      socketRef.current = socket;
+
+      socket.onopen = async () => {
+        try {
+          setStatus("Connected to SFU. Joining as publisher...");
+
+          socket.send(
+            JSON.stringify({
+              type: "join",
+              roomId: ticket.roomId,
+              role: "publisher",
+              token: ticket.token,
+            })
+          );
+
+          const peer = createPeerConnection();
+
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+
+          socket.send(
+            JSON.stringify({
+              type: "offer",
+              sdp: peer.localDescription?.sdp,
+            })
+          );
+
+          setIsConnectedToSfu(true);
+          setStatus("Publishing media to SFU...");
+        } catch (openError) {
+          const message =
+            openError instanceof Error ? openError.message : "Failed to publish to SFU";
+          setError(message);
+        }
+      };
+
+      socket.onmessage = async (event) => {
+        const message = JSON.parse(event.data) as SfuMessage;
+
+        if (message.type === "answer" && message.sdp && peerRef.current) {
+          await peerRef.current.setRemoteDescription({
+            type: "answer",
+            sdp: message.sdp,
+          });
+
+          setStatus("Live media is connected to SFU.");
+        }
+
+        if (message.type === "ice" && message.candidate && peerRef.current) {
+          await peerRef.current.addIceCandidate(message.candidate);
+        }
+
+        if (message.type === "info") {
+          console.log("SFU info:", message.message);
+        }
+
+        if (message.type === "error") {
+          setError(message.message || "SFU error");
+        }
+      };
+
+      socket.onerror = () => {
+        setError("SFU websocket error.");
+        setIsConnectedToSfu(false);
+      };
+
+      socket.onclose = () => {
+        setStatus("Disconnected from SFU.");
+        setIsConnectedToSfu(false);
+        socketRef.current = null;
+      };
+    } catch (connectError) {
+      const message =
+        connectError instanceof Error ? connectError.message : "Failed to connect to SFU";
+      setError(message);
+      cleanupSfu();
+    }
+  };
+
+  const cleanupSfu = () => {
+    socketRef.current?.close();
+    socketRef.current = null;
+
+    peerRef.current?.close();
+    peerRef.current = null;
+
+    setIsConnectedToSfu(false);
   };
 
   const enableCamera = async () => {
     try {
+      setError(null);
+
       const media = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: true,
       });
+
       mediaRef.current = media;
       setCameraReady(true);
+
       if (videoRef.current) {
         videoRef.current.srcObject = media;
       }
+
       setStatus("Camera ready.");
     } catch (mediaError) {
       const message = mediaError instanceof Error ? mediaError.message : "Camera access failed";
@@ -228,7 +280,7 @@ function StudioRoomContent() {
     try {
       const updated = await api.startStream(token, streamId);
       setStream(updated);
-      setStatus("Stream is now live. Enable camera to begin sending video.");
+      setStatus("Stream is now live. Enable camera, then connect to SFU.");
     } catch (startError) {
       const message = startError instanceof Error ? startError.message : "Failed to start stream";
       setError(message);
@@ -248,14 +300,13 @@ function StudioRoomContent() {
     try {
       const updated = await api.endStream(token, streamId);
       setStream(updated);
-      socketRef.current?.close();
+
+      cleanupSfu();
+
       mediaRef.current?.getTracks().forEach((track) => track.stop());
       mediaRef.current = null;
       setCameraReady(false);
-      for (const peer of peersRef.current.values()) {
-        peer.close();
-      }
-      peersRef.current.clear();
+
       setStatus("Stream ended.");
     } catch (endError) {
       const message = endError instanceof Error ? endError.message : "Failed to end stream";
@@ -273,6 +324,7 @@ function StudioRoomContent() {
           <h1>{stream?.title || "Opening stream room..."}</h1>
           <p className="muted hero-copy">{stream?.description || "No description available."}</p>
         </div>
+
         <div className="stat-block">
           <span>Active viewers</span>
           <strong>{viewerCount}</strong>
@@ -304,6 +356,7 @@ function StudioRoomContent() {
             <div className="video-frame">
               <video autoPlay muted playsInline ref={videoRef} />
             </div>
+
             <div className="status-bar">
               <span className="status-dot" />
               <span>{status}</span>
@@ -315,10 +368,12 @@ function StudioRoomContent() {
               <p className="eyebrow">Broadcast controls</p>
               <h2>Manage this live room</h2>
             </div>
+
             <div className="stack-sm">
               <button className="primary-button" onClick={enableCamera} type="button">
                 {cameraReady ? "Camera ready" : "Enable camera"}
               </button>
+
               <button
                 className="ghost-button"
                 disabled={stream.status === "live" || isStarting}
@@ -327,6 +382,16 @@ function StudioRoomContent() {
               >
                 {isStarting ? "Starting..." : "Start stream"}
               </button>
+
+              <button
+                className="ghost-button"
+                disabled={!cameraReady || stream.status !== "live" || isConnectedToSfu}
+                onClick={connectPublisherToSfu}
+                type="button"
+              >
+                {isConnectedToSfu ? "Connected to SFU" : "Connect to SFU"}
+              </button>
+
               <button
                 className="ghost-button danger"
                 disabled={stream.status !== "live" || isEnding}
@@ -336,11 +401,18 @@ function StudioRoomContent() {
                 {isEnding ? "Ending..." : "End stream"}
               </button>
             </div>
+
             <div className="meta-list">
               <div>
                 <span>Status</span>
                 <strong>{stream.status}</strong>
               </div>
+
+              <div>
+                <span>SFU</span>
+                <strong>{isConnectedToSfu ? "connected" : "not connected"}</strong>
+              </div>
+
               <div>
                 <span>Stream ID</span>
                 <strong>{stream.id}</strong>

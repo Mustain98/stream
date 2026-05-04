@@ -1,0 +1,188 @@
+from fastapi import WebSocket, WebSocketDisconnect
+from aiortc import RTCSessionDescription
+from aiortc.sdp import candidate_from_sdp
+
+from models import (
+    SignalType,
+    PeerRole,
+    parse_signal_message,
+)
+from peer import Peer
+
+class SignalingServer:
+    def __init__(self, rooms: dict, media_router, get_or_create_room, remove_room_if_empty):
+        self.rooms = rooms
+        self.media_router = media_router
+        self.get_or_create_room = get_or_create_room
+        self.remove_room_if_empty = remove_room_if_empty
+
+    async def handle_websocket(self, websocket: WebSocket):
+        await websocket.accept()
+
+        peer = None
+        room = None
+
+        try:
+            raw_join_msg = await websocket.receive_json()
+            join_msg = parse_signal_message(raw_join_msg)
+
+            if join_msg.type != SignalType.JOIN:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "First message must be join"
+                })
+                return
+
+            room_id = join_msg.roomId
+            role = join_msg.role
+
+            room = self.get_or_create_room(room_id)
+
+            peer = Peer(
+                role=role,
+                room_id=room_id,
+                websocket=websocket,
+            )
+
+            await peer.create_peer_connection()
+
+            if role == PeerRole.PUBLISHER:
+                if room.publisher is not None:
+                    await peer.send_json({
+                        "type": "error",
+                        "message": "Room already has a publisher"
+                    })
+                    await peer.close()
+                    return
+
+                room.set_publisher(peer)
+                self.setup_publisher_track_handler(peer, room)
+
+                await peer.send_json({
+                    "type": "info",
+                    "message": "Joined as publisher",
+                    "peerId": peer.id,
+                    "roomId": room_id,
+                })
+
+                print(f"[Signaling] Publisher joined room {room_id}")
+
+            elif role == PeerRole.SUBSCRIBER:
+                room.add_subscriber(peer)
+
+                # Existing publisher tracks are attached before answer creation.
+                await self.media_router.attach_existing_tracks_to_subscriber(room, peer)
+
+                await peer.send_json({
+                    "type": "info",
+                    "message": "Joined as subscriber",
+                    "peerId": peer.id,
+                    "roomId": room_id,
+                })
+
+                print(f"[Signaling] Subscriber joined room {room_id}")
+
+            while True:
+                raw_msg = await websocket.receive_json()
+                msg = parse_signal_message(raw_msg)
+                await self.handle_message(peer, room, msg)
+
+        except WebSocketDisconnect:
+            print("[Signaling] WebSocket disconnected")
+
+        except Exception as e:
+            print("[Signaling] Error:", str(e))
+
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": str(e),
+                })
+            except Exception:
+                pass
+
+        finally:
+            if peer and room:
+                room.remove_peer(peer.id)
+                await peer.close()
+                self.remove_room_if_empty(room.room_id)
+
+    async def handle_message(self, peer, room, msg):
+        if msg.type == SignalType.OFFER:
+            await self.handle_offer(peer, room, msg)
+
+        elif msg.type == SignalType.ICE:
+            await self.handle_ice(peer, msg)
+
+        elif msg.type == SignalType.LEAVE:
+            await self.handle_leave(peer, room)
+
+    async def handle_offer(self, peer, room, msg):
+        """
+        Browser sends offer.
+        SFU replies with answer.
+        """
+
+        offer = RTCSessionDescription(
+            sdp=msg.sdp,
+            type="offer",
+        )
+
+        await peer.pc.setRemoteDescription(offer)
+
+        # Important for subscribers:
+        # If tracks already exist, attach them before creating answer.
+        if peer.role == PeerRole.SUBSCRIBER:
+            await self.media_router.attach_existing_tracks_to_subscriber(room, peer)
+
+        answer = await peer.pc.createAnswer()
+        await peer.pc.setLocalDescription(answer)
+
+        await peer.send_json({
+            "type": "answer",
+            "sdp": peer.pc.localDescription.sdp,
+        })
+
+        print(f"[Signaling] Sent answer to {peer.role} {peer.id}")
+
+    async def handle_ice(self, peer, msg):
+        """
+        Browser sends ICE candidate.
+
+        aiortc expects parsed candidate objects, not the raw browser candidate string.
+        """
+
+        if not msg.candidate:
+            await peer.pc.addIceCandidate(None)
+            return
+
+        candidate_text = msg.candidate.candidate
+
+        if candidate_text.startswith("candidate:"):
+            candidate_text = candidate_text.split(":", 1)[1]
+
+        candidate = candidate_from_sdp(candidate_text)
+        candidate.sdpMid = msg.candidate.sdpMid
+        candidate.sdpMLineIndex = msg.candidate.sdpMLineIndex
+
+        await peer.pc.addIceCandidate(candidate)
+
+    async def handle_leave(self, peer, room):
+        room.remove_peer(peer.id)
+        await peer.close()
+        self.remove_room_if_empty(room.room_id)
+
+    def setup_publisher_track_handler(self, peer, room):
+        """
+        When publisher sends audio/video tracks, route them to viewers.
+        """
+
+        @peer.pc.on("track")
+        async def on_track(track):
+            print(f"[Signaling] Publisher track received: {track.kind}")
+
+            await self.media_router.handle_publisher_track(room, track)
+
+            @track.on("ended")
+            async def on_ended():
+                print(f"[Signaling] Publisher track ended: {track.kind}")

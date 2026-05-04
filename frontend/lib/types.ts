@@ -37,10 +37,12 @@ export type StreamDetailsResponse = {
   viewer_count: number;
 };
 
-export type WsTicketResponse = {
-  ticket: string;
-  stream_id: string;
-  role: "broadcaster" | "viewer";
+export type SfuTicketResponse = {
+  sfuUrl: string;
+  token: string;
+  streamId: string;
+  roomId: string;
+  role: "publisher" | "subscriber";
 };
 
 export type ApiError = {

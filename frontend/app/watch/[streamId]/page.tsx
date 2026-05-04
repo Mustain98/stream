@@ -5,14 +5,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
-import { api, WS_BASE_URL } from "../../../lib/api";
+import { api } from "../../../lib/api";
 import type { StreamRecord } from "../../../lib/types";
 
-type SignalMessage = {
+type SfuMessage = {
   type: string;
-  from: string;
-  to?: string;
-  data?: RTCSessionDescriptionInit | RTCIceCandidateInit;
+  sdp?: string;
+  candidate?: RTCIceCandidateInit | null;
+  message?: string;
+  reason?: string;
 };
 
 export default function WatchPage() {
@@ -27,37 +28,42 @@ function WatchContent() {
   const params = useParams<{ streamId: string }>();
   const router = useRouter();
   const streamId = params.streamId;
+
   const { token, user } = useSession();
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const tokenRef = useRef<string | null>(null);
+  const joinedRef = useRef(false);
+  const isConnectingRef = useRef(false);
+
   const [stream, setStream] = useState<StreamRecord | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [status, setStatus] = useState("Loading stream...");
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  const peerRef = useRef<RTCPeerConnection | null>(null);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
-  const isConnectingRef = useRef(false);
-  const joinedRef = useRef(false);
-  const tokenRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    joinedRef.current = joined;
-  }, [joined]);
 
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
 
   useEffect(() => {
+    joinedRef.current = joined;
+  }, [joined]);
+
+  useEffect(() => {
     const loadStream = async () => {
       try {
         const response = await api.getStream(streamId);
         setStream(response.stream);
-        setViewerCount(response.viewer_count);
+        // use relatime view count
+        // setViewerCount(response.viewer_count);
+
         setStatus(
           response.stream.status === "live"
-            ? "Preparing to join the live room."
+            ? "Preparing to join SFU room."
             : "This stream is not live right now."
         );
       } catch (streamError) {
@@ -80,15 +86,19 @@ function WatchContent() {
   }, [router, stream, streamId, user]);
 
   useEffect(() => {
-    if (!token || !stream || stream.status !== "live" || joined) {
+    if (!token || !stream || !user) {
       return;
     }
 
-    if (stream.broadcaster_id === user?.id) {
+    if (stream.status !== "live") {
       return;
     }
 
-    if (isConnectingRef.current) {
+    if (stream.broadcaster_id === user.id) {
+      return;
+    }
+
+    if (joined || isConnectingRef.current) {
       return;
     }
 
@@ -97,74 +107,101 @@ function WatchContent() {
 
     const connectViewer = async () => {
       try {
+        setError(null);
+
         await api.joinStream(token, streamId);
+
         if (cancelled) {
-          isConnectingRef.current = false;
           return;
         }
 
-        setStatus("Joined the room. Waiting for the broadcaster.");
+        setStatus("Requesting SFU ticket from main backend...");
 
-        const ticket = await api.getWsTicket(token, streamId);
+        const ticket = await api.getSfuTicket(token, streamId);
+
         if (cancelled) {
-          isConnectingRef.current = false;
           return;
         }
 
-        const socket = new WebSocket(`${WS_BASE_URL}/ws/stream/${streamId}?ticket=${ticket.ticket}`);
+        const socket = new WebSocket(ticket.sfuUrl);
         socketRef.current = socket;
 
-        socket.onopen = () => {
-          setJoined(true);
-          socket.send(JSON.stringify({ type: "viewer-ready", data: { userId: user?.id } }));
+        socket.onopen = async () => {
+          try {
+            setStatus("Connected to SFU. Joining as subscriber...");
+
+            socket.send(
+              JSON.stringify({
+                type: "join",
+                roomId: ticket.roomId,
+                role: "subscriber",
+                token: ticket.token,
+              })
+            );
+
+            const peer = createPeerConnection();
+
+            const offer = await peer.createOffer();
+            await peer.setLocalDescription(offer);
+
+            socket.send(
+              JSON.stringify({
+                type: "offer",
+                sdp: peer.localDescription?.sdp,
+              })
+            );
+
+            setJoined(true);
+            setStatus("Waiting for media from SFU...");
+          } catch (openError) {
+            const message =
+              openError instanceof Error ? openError.message : "Failed to join SFU";
+            setError(message);
+          }
         };
 
         socket.onmessage = async (event) => {
-          const message = JSON.parse(event.data) as SignalMessage;
+          const message = JSON.parse(event.data) as SfuMessage;
 
-          if (message.type === "broadcaster-ready") {
-            socket.send(JSON.stringify({ type: "viewer-ready", data: { userId: user?.id } }));
-            setStatus("Broadcaster is ready. Requesting live feed.");
-          }
+          if (message.type === "answer" && message.sdp && peerRef.current) {
+            await peerRef.current.setRemoteDescription({
+              type: "answer",
+              sdp: message.sdp,
+            });
 
-          if (message.type === "offer" && message.data) {
-            const peer = createPeerConnection();
-            const offer = message.data as RTCSessionDescriptionInit;
-            await peer.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-            socket.send(
-              JSON.stringify({
-                type: "answer",
-                to: message.from,
-                data: answer,
-              })
-            );
             setStatus("Receiving live video.");
           }
 
-          if (message.type === "ice" && message.data && peerRef.current) {
-            const candidate = message.data as RTCIceCandidateInit;
-            await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          if (message.type === "ice" && message.candidate && peerRef.current) {
+            await peerRef.current.addIceCandidate(message.candidate);
           }
-          if (message.type === "viewer-count" && message.data) {
-            const d = message.data as { count: number };
-            setViewerCount(d.count);
+
+          if (message.type === "renegotiate") {
+            await renegotiateSubscriber();
+          }
+
+          if (message.type === "info") {
+            console.log("SFU info:", message.message);
+          }
+
+          if (message.type === "error") {
+            setError(message.message || "SFU error");
           }
         };
 
         socket.onerror = () => {
-          isConnectingRef.current = false;
-          setError("Viewer websocket disconnected unexpectedly.");
+          setError("Viewer SFU websocket error.");
         };
 
         socket.onclose = () => {
-          isConnectingRef.current = false;
           socketRef.current = null;
+          isConnectingRef.current = false;
+          setJoined(false);
         };
       } catch (joinError) {
         const message = joinError instanceof Error ? joinError.message : "Unable to join stream";
         setError(message);
+      } finally {
         isConnectingRef.current = false;
       }
     };
@@ -175,17 +212,15 @@ function WatchContent() {
       cancelled = true;
       isConnectingRef.current = false;
     };
-  }, [joined, stream, streamId, token, user?.id]);
+  }, [joined, stream, streamId, token, user]);
 
   useEffect(() => {
     return () => {
-      socketRef.current?.close();
-      peerRef.current?.close();
-      remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cleanupViewer();
+
       if (tokenRef.current && joinedRef.current) {
         void api.leaveStream(tokenRef.current, streamId).catch(() => undefined);
       }
-      isConnectingRef.current = false;
     };
   }, [streamId]);
 
@@ -209,6 +244,7 @@ function WatchContent() {
       const existingTrackIds = new Set(
         remoteStreamRef.current.getTracks().map((track) => track.id)
       );
+
       if (!existingTrackIds.has(event.track.id)) {
         remoteStreamRef.current.addTrack(event.track);
       }
@@ -220,23 +256,63 @@ function WatchContent() {
     };
 
     peer.onicecandidate = (event) => {
-      if (
-        event.candidate &&
-        socketRef.current?.readyState === WebSocket.OPEN &&
-        stream?.broadcaster_id
-      ) {
-        socketRef.current.send(
-          JSON.stringify({
-            type: "ice",
-            to: stream.broadcaster_id,
-            data: event.candidate.toJSON(),
-          })
-        );
+      if (socketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
       }
+
+      socketRef.current.send(
+        JSON.stringify({
+          type: "ice",
+          candidate: event.candidate ? event.candidate.toJSON() : null,
+        })
+      );
+    };
+
+    peer.onconnectionstatechange = () => {
+      setStatus(`Viewer connection state: ${peer.connectionState}`);
+    };
+
+    peer.oniceconnectionstatechange = () => {
+      console.log("Viewer ICE state:", peer.iceConnectionState);
     };
 
     peerRef.current = peer;
     return peer;
+  };
+
+  const renegotiateSubscriber = async () => {
+    const peer = peerRef.current;
+    const socket = socketRef.current;
+
+    if (!peer || !socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+
+    socket.send(
+      JSON.stringify({
+        type: "offer",
+        sdp: peer.localDescription?.sdp,
+      })
+    );
+
+    setStatus("Renegotiating media with SFU...");
+  };
+
+  const cleanupViewer = () => {
+    socketRef.current?.close();
+    socketRef.current = null;
+
+    peerRef.current?.close();
+    peerRef.current = null;
+
+    remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteStreamRef.current = null;
+
+    isConnectingRef.current = false;
+    setJoined(false);
   };
 
   return (
@@ -247,6 +323,7 @@ function WatchContent() {
           <h1>{stream?.title || "Opening stream..."}</h1>
           <p className="muted hero-copy">{stream?.description || "Waiting for metadata."}</p>
         </div>
+
         <div className="stat-block">
           <span>Viewers</span>
           <strong>{viewerCount}</strong>
@@ -259,6 +336,7 @@ function WatchContent() {
         <div className="video-frame">
           <video autoPlay controls playsInline ref={videoRef} />
         </div>
+
         <div className="status-bar">
           <span className="status-dot" />
           <span>{status}</span>
