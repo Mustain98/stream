@@ -5,12 +5,14 @@ from fastapi import WebSocket
 from aiortc import RTCPeerConnection
 
 class Peer:
-    def __init__(self,role,room_id,websocket):
+    def __init__(self,role,room_id,websocket,user_id,username):
         self.id=str(uuid.uuid4())
         self.role=role
         self.room_id=room_id
         self.websocket=websocket
-
+        # added user field to show viewer list
+        self.user_id = user_id
+        self.username= username
         self.pc=None
 
         self.attached_kinds:set[str] = set()
@@ -42,5 +44,10 @@ class Peer:
         
     async def close(self):
         if self.pc:
-            await self.pc.close()
-            self.pc = None
+            try:
+                if self.pc.connectionState != "closed":
+                    await self.pc.close()
+            except Exception as e:
+                print(f"[Peer {self.id}] close ignored error:", str(e))
+            finally:
+                self.pc = None

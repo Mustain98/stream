@@ -1,24 +1,36 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any
 from pydantic import BaseModel, Field
 
-class SignalType(str,Enum):
-    JOIN="join"
-    OFFER="offer"
-    ANSWER="answer"
-    ICE="ice"
-    LEAVE="leave"
-    ERROR="error"
+
+class SignalType(str, Enum):
+    JOIN = "join"
+    OFFER = "offer"
+    ANSWER = "answer"
+    ICE = "ice"
+    LEAVE = "leave"
+    ERROR = "error"
+    INFO = "info"
+    RENEGOTIATE = "renegotiate"
     PRESENCE = "presence"
 
-class PeerRole(str,Enum):
-    PUBLISHER="publisher"
-    SUBSCRIBER="subscriber"
+
+class PeerRole(str, Enum):
+    PUBLISHER = "publisher"
+    SUBSCRIBER = "subscriber"
+
 
 class JoinMessage(BaseModel):
-    type:SignalType=Field(default=SignalType.JOIN)
-    roomId:str
-    role:PeerRole
+    type: SignalType = Field(default=SignalType.JOIN)
+    roomId: str
+    role: PeerRole
+
+    # Sent by frontend for now.
+    # Later, get these by verifying the SFU ticket.
+    token: Optional[str] = None
+    userId: Optional[str] = None
+    username: Optional[str] = None
+
 
 class OfferMessage(BaseModel):
     type: SignalType = Field(default=SignalType.OFFER)
@@ -50,17 +62,20 @@ class ErrorMessage(BaseModel):
     message: str
 
 
-def parse_signal_message(data: dict):
-    """
-    Converts raw websocket JSON data into the correct Pydantic model.
+class PresenceViewer(BaseModel):
+    peerId: str
+    userId: Optional[str] = None
+    username: str
 
-    Example:
-        msg = parse_signal_message(data)
 
-        if msg.type == SignalType.JOIN:
-            ...
-    """
+class PresenceMessage(BaseModel):
+    type: SignalType = Field(default=SignalType.PRESENCE)
+    roomId: str
+    viewerCount: int
+    viewers: list[PresenceViewer]
 
+
+def parse_signal_message(data: dict[str, Any]):
     msg_type = data.get("type")
 
     if msg_type == SignalType.JOIN.value:

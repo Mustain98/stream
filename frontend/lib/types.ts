@@ -48,3 +48,20 @@ export type SfuTicketResponse = {
 export type ApiError = {
   detail?: string;
 };
+
+export type ViewerInfo = {
+  peerId: string;
+  userId: string | null;
+  username: string;
+};
+
+export type SfuMessage = {
+  type: string;
+  sdp?: string;
+  candidate?: RTCIceCandidateInit | null;
+  message?: string;
+  reason?: string;
+  roomId?: string;
+  viewerCount?: number;
+  viewers?: ViewerInfo[];
+};

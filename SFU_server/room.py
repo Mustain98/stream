@@ -48,3 +48,40 @@ class Room:
 
     def is_empty(self):
         return self.publisher is None and len(self.subscribers) == 0
+
+
+    def get_viewer_list(self):
+        return [
+            {
+                "peerId":peer.id,
+                "userId":peer.user_id,
+                "username":peer.username,
+            }
+            for peer in self.subscribers.values()
+        ]
+    
+    def get_presence_payload(self):
+        viewers = self.get_viewer_list()
+
+        return {
+            "type": "presence",
+            "roomId": self.room_id,
+            "viewerCount": len(viewers),
+            "viewers": viewers,
+        }
+
+    async def broadcast_presence(self):
+        payload = self.get_presence_payload()
+
+        targets = []
+
+        if self.publisher:
+            targets.append(self.publisher)
+
+        targets.extend(self.subscribers.values())
+
+        for peer in targets:
+            try:
+                await peer.send_json(payload)
+            except Exception as e:
+                print(f"[Room {self.room_id}] Failed to send presence:", e)

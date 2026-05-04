@@ -8,14 +8,8 @@ import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
 import { api } from "../../../lib/api";
 import type { StreamRecord } from "../../../lib/types";
-
-type SfuMessage = {
-  type: string;
-  sdp?: string;
-  candidate?: RTCIceCandidateInit | null;
-  message?: string;
-  reason?: string;
-};
+import type { SfuMessage } from "../../../lib/types"
+import type { ViewerInfo } from "../../../lib/types";
 
 export default function StudioRoomPage() {
   return (
@@ -38,6 +32,7 @@ function StudioRoomContent() {
 
   const [stream, setStream] = useState<StreamRecord | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
+  const [viewers, setViewers] = useState<ViewerInfo[]>([]);
   const [status, setStatus] = useState("Loading room...");
   const [error, setError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
@@ -169,6 +164,8 @@ function StudioRoomContent() {
               roomId: ticket.roomId,
               role: "publisher",
               token: ticket.token,
+              userId: user?.id,
+              username: user?.username,
             })
           );
 
@@ -215,6 +212,10 @@ function StudioRoomContent() {
 
         if (message.type === "error") {
           setError(message.message || "SFU error");
+        }
+        if (message.type === "presence") {
+          setViewerCount(message.viewerCount ?? 0);
+          setViewers(message.viewers ?? []);
         }
       };
 
@@ -324,11 +325,6 @@ function StudioRoomContent() {
           <h1>{stream?.title || "Opening stream room..."}</h1>
           <p className="muted hero-copy">{stream?.description || "No description available."}</p>
         </div>
-
-        <div className="stat-block">
-          <span>Active viewers</span>
-          <strong>{viewerCount}</strong>
-        </div>
       </div>
 
       {error ? <p className="error-banner">{error}</p> : null}
@@ -360,6 +356,25 @@ function StudioRoomContent() {
             <div className="status-bar">
               <span className="status-dot" />
               <span>{status}</span>
+            </div>
+            <div className="panel stack-md">
+              <div>
+                <p className="eyebrow">Live viewers</p>
+                <h2>{viewerCount} watching</h2>
+              </div>
+
+              {viewers.length === 0 ? (
+                <p className="muted">No viewers connected yet.</p>
+              ) : (
+                <ul className="viewer-list">
+                  {viewers.map((viewer) => (
+                    <li key={viewer.peerId}>
+                      <strong>{viewer.username}</strong>
+                      <span>{viewer.userId}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 

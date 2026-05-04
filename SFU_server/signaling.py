@@ -42,6 +42,8 @@ class SignalingServer:
                 role=role,
                 room_id=room_id,
                 websocket=websocket,
+                user_id=join_msg.userId,
+                username=join_msg.username,
             )
 
             await peer.create_peer_connection()
@@ -65,6 +67,8 @@ class SignalingServer:
                     "roomId": room_id,
                 })
 
+                await room.broadcast_presence()
+
                 print(f"[Signaling] Publisher joined room {room_id}")
 
             elif role == PeerRole.SUBSCRIBER:
@@ -79,6 +83,8 @@ class SignalingServer:
                     "peerId": peer.id,
                     "roomId": room_id,
                 })
+
+                await room.broadcast_presence()
 
                 print(f"[Signaling] Subscriber joined room {room_id}")
 
@@ -105,6 +111,8 @@ class SignalingServer:
             if peer and room:
                 room.remove_peer(peer.id)
                 await peer.close()
+                if not room.is_empty():
+                    await room.broadcast_presence()
                 self.remove_room_if_empty(room.room_id)
 
     async def handle_message(self, peer, room, msg):

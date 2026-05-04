@@ -7,14 +7,8 @@ import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
 import { api } from "../../../lib/api";
 import type { StreamRecord } from "../../../lib/types";
-
-type SfuMessage = {
-  type: string;
-  sdp?: string;
-  candidate?: RTCIceCandidateInit | null;
-  message?: string;
-  reason?: string;
-};
+import type { SfuMessage } from "../../../lib/types";
+import type { ViewerInfo } from "../../../lib/types";
 
 export default function WatchPage() {
   return (
@@ -41,6 +35,7 @@ function WatchContent() {
 
   const [stream, setStream] = useState<StreamRecord | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
+  const [viewers, setViewers] = useState<ViewerInfo[]>([]);
   const [status, setStatus] = useState("Loading stream...");
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
@@ -136,6 +131,8 @@ function WatchContent() {
                 roomId: ticket.roomId,
                 role: "subscriber",
                 token: ticket.token,
+                userId: user?.id,
+                username: user?.username,
               })
             );
 
@@ -186,6 +183,10 @@ function WatchContent() {
 
           if (message.type === "error") {
             setError(message.message || "SFU error");
+          }
+          if (message.type === "presence") {
+            setViewerCount(message.viewerCount ?? 0);
+            setViewers(message.viewers ?? []);
           }
         };
 
@@ -323,11 +324,6 @@ function WatchContent() {
           <h1>{stream?.title || "Opening stream..."}</h1>
           <p className="muted hero-copy">{stream?.description || "Waiting for metadata."}</p>
         </div>
-
-        <div className="stat-block">
-          <span>Viewers</span>
-          <strong>{viewerCount}</strong>
-        </div>
       </div>
 
       {error ? <p className="error-banner">{error}</p> : null}
@@ -336,7 +332,25 @@ function WatchContent() {
         <div className="video-frame">
           <video autoPlay controls playsInline ref={videoRef} />
         </div>
+        <div className="panel stack-md">
+        <div>
+          <p className="eyebrow">Live viewers</p>
+          <h2>{viewerCount} watching</h2>
+        </div>
 
+        {viewers.length === 0 ? (
+          <p className="muted">No viewers connected yet.</p>
+        ) : (
+          <ul className="viewer-list">
+            {viewers.map((viewer) => (
+              <li key={viewer.peerId}>
+                <strong>{viewer.username}</strong>
+                <span>{viewer.userId}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
         <div className="status-bar">
           <span className="status-dot" />
           <span>{status}</span>
