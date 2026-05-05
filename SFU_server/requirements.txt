@@ -3,3 +3,4 @@ uvicorn
 websockets
 aiortc
 pydantic
+python-dotenv

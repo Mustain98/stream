@@ -1,6 +1,7 @@
 # backend/core/ws_ticket.py
 
 import os
+from typing import Optional
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from jose import JWTError, jwt
@@ -13,7 +14,7 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 SFU_TICKET_EXPIRE_SECONDS = 120
 
 
-def create_sfu_ticket(user_id: str, stream_id: str, role: str):
+def create_sfu_ticket(user_id: str, stream_id: str, role: str, username:Optional[str]=None):
     """
     Create a short-lived signed token for joining the SFU server.
 
@@ -23,10 +24,11 @@ def create_sfu_ticket(user_id: str, stream_id: str, role: str):
     expire = datetime.utcnow() + timedelta(seconds=SFU_TICKET_EXPIRE_SECONDS)
 
     payload = {
-        "sub": user_id,
-        "stream_id": stream_id,
+        "sub": str(user_id),
+        "stream_id": str(stream_id),
         "role": role,
         "type": "sfu_ticket",
+        "username":username,
         "exp": expire,
     }
 

@@ -6,9 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
 import { api } from "../../../lib/api";
-import type { StreamRecord } from "../../../lib/types";
-import type { SfuMessage } from "../../../lib/types";
-import type { ViewerInfo } from "../../../lib/types";
+import type { SfuMessage, StreamRecord, ViewerInfo } from "../../../lib/types";
 
 export default function WatchPage() {
   return (
@@ -39,6 +37,7 @@ function WatchContent() {
   const [status, setStatus] = useState("Loading stream...");
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     tokenRef.current = token;
@@ -52,9 +51,8 @@ function WatchContent() {
     const loadStream = async () => {
       try {
         const response = await api.getStream(streamId);
+
         setStream(response.stream);
-        // use relatime view count
-        // setViewerCount(response.viewer_count);
 
         setStatus(
           response.stream.status === "live"
@@ -62,7 +60,9 @@ function WatchContent() {
             : "This stream is not live right now."
         );
       } catch (streamError) {
-        const message = streamError instanceof Error ? streamError.message : "Failed to load";
+        const message =
+          streamError instanceof Error ? streamError.message : "Failed to load";
+
         setError(message);
       }
     };
@@ -128,11 +128,7 @@ function WatchContent() {
             socket.send(
               JSON.stringify({
                 type: "join",
-                roomId: ticket.roomId,
-                role: "subscriber",
                 token: ticket.token,
-                userId: user?.id,
-                username: user?.username,
               })
             );
 
@@ -153,6 +149,7 @@ function WatchContent() {
           } catch (openError) {
             const message =
               openError instanceof Error ? openError.message : "Failed to join SFU";
+
             setError(message);
           }
         };
@@ -166,7 +163,7 @@ function WatchContent() {
               sdp: message.sdp,
             });
 
-            setStatus("Receiving live video.");
+            setStatus(isPaused ? "Stream paused by broadcaster." : "Receiving live video.");
           }
 
           if (message.type === "ice" && message.candidate && peerRef.current) {
@@ -177,16 +174,24 @@ function WatchContent() {
             await renegotiateSubscriber();
           }
 
+          if (message.type === "presence") {
+            setViewerCount(message.viewerCount ?? 0);
+            setViewers(message.viewers ?? []);
+          }
+
+          if (message.type === "stream-state") {
+            const paused = message.state === "paused";
+
+            setIsPaused(paused);
+            setStatus(paused ? "Stream paused by broadcaster." : "Receiving live video.");
+          }
+
           if (message.type === "info") {
             console.log("SFU info:", message.message);
           }
 
           if (message.type === "error") {
             setError(message.message || "SFU error");
-          }
-          if (message.type === "presence") {
-            setViewerCount(message.viewerCount ?? 0);
-            setViewers(message.viewers ?? []);
           }
         };
 
@@ -198,9 +203,12 @@ function WatchContent() {
           socketRef.current = null;
           isConnectingRef.current = false;
           setJoined(false);
+          setIsPaused(false);
         };
       } catch (joinError) {
-        const message = joinError instanceof Error ? joinError.message : "Unable to join stream";
+        const message =
+          joinError instanceof Error ? joinError.message : "Unable to join stream";
+
         setError(message);
       } finally {
         isConnectingRef.current = false;
@@ -213,7 +221,7 @@ function WatchContent() {
       cancelled = true;
       isConnectingRef.current = false;
     };
-  }, [joined, stream, streamId, token, user]);
+  }, [joined, stream, streamId, token, user, isPaused]);
 
   useEffect(() => {
     return () => {
@@ -309,11 +317,19 @@ function WatchContent() {
     peerRef.current?.close();
     peerRef.current = null;
 
-    remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteStreamRef.current?.getTracks().forEach((track) => {
+      track.stop();
+    });
+
     remoteStreamRef.current = null;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
 
     isConnectingRef.current = false;
     setJoined(false);
+    setIsPaused(false);
   };
 
   return (
@@ -322,7 +338,14 @@ function WatchContent() {
         <div>
           <p className="eyebrow">Watch live</p>
           <h1>{stream?.title || "Opening stream..."}</h1>
-          <p className="muted hero-copy">{stream?.description || "Waiting for metadata."}</p>
+          <p className="muted hero-copy">
+            {stream?.description || "Waiting for metadata."}
+          </p>
+        </div>
+
+        <div className="stat-block">
+          <span>Live viewers</span>
+          <strong>{viewerCount}</strong>
         </div>
       </div>
 
@@ -331,8 +354,21 @@ function WatchContent() {
       <div className="panel stack-md">
         <div className="video-frame">
           <video autoPlay controls playsInline ref={videoRef} />
+
+          {isPaused ? (
+            <div className="pause-overlay">
+              <strong>Stream paused</strong>
+            </div>
+          ) : null}
         </div>
-        <div className="panel stack-md">
+
+        <div className="status-bar">
+          <span className="status-dot" />
+          <span>{status}</span>
+        </div>
+      </div>
+
+      <div className="panel stack-md">
         <div>
           <p className="eyebrow">Live viewers</p>
           <h2>{viewerCount} watching</h2>
@@ -350,11 +386,6 @@ function WatchContent() {
             ))}
           </ul>
         )}
-      </div>
-        <div className="status-bar">
-          <span className="status-dot" />
-          <span>{status}</span>
-        </div>
       </div>
     </section>
   );

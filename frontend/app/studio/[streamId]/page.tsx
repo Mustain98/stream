@@ -7,9 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
 import { api } from "../../../lib/api";
-import type { StreamRecord } from "../../../lib/types";
-import type { SfuMessage } from "../../../lib/types"
-import type { ViewerInfo } from "../../../lib/types";
+import type { SfuMessage, StreamRecord, ViewerInfo } from "../../../lib/types";
 
 export default function StudioRoomPage() {
   return (
@@ -33,12 +31,15 @@ function StudioRoomContent() {
   const [stream, setStream] = useState<StreamRecord | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [viewers, setViewers] = useState<ViewerInfo[]>([]);
+
   const [status, setStatus] = useState("Loading room...");
   const [error, setError] = useState<string | null>(null);
+
   const [cameraReady, setCameraReady] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [isConnectedToSfu, setIsConnectedToSfu] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   const isOwner = stream?.broadcaster_id === user?.id;
 
@@ -46,6 +47,7 @@ function StudioRoomContent() {
     const loadRoom = async () => {
       try {
         const response = await api.getStream(streamId);
+
         setStream(response.stream);
         setViewerCount(response.viewer_count);
 
@@ -55,7 +57,9 @@ function StudioRoomContent() {
             : "Stream is offline. Start it when you are ready."
         );
       } catch (roomError) {
-        const message = roomError instanceof Error ? roomError.message : "Failed to load stream";
+        const message =
+          roomError instanceof Error ? roomError.message : "Failed to load stream";
+
         setError(message);
       }
     };
@@ -72,8 +76,14 @@ function StudioRoomContent() {
   useEffect(() => {
     return () => {
       cleanupSfu();
-      mediaRef.current?.getTracks().forEach((track) => track.stop());
+
+      mediaRef.current?.getTracks().forEach((track) => {
+        track.stop();
+      });
+
+      mediaRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const createPeerConnection = () => {
@@ -161,11 +171,7 @@ function StudioRoomContent() {
           socket.send(
             JSON.stringify({
               type: "join",
-              roomId: ticket.roomId,
-              role: "publisher",
               token: ticket.token,
-              userId: user?.id,
-              username: user?.username,
             })
           );
 
@@ -186,6 +192,7 @@ function StudioRoomContent() {
         } catch (openError) {
           const message =
             openError instanceof Error ? openError.message : "Failed to publish to SFU";
+
           setError(message);
         }
       };
@@ -206,16 +213,24 @@ function StudioRoomContent() {
           await peerRef.current.addIceCandidate(message.candidate);
         }
 
+        if (message.type === "presence") {
+          setViewerCount(message.viewerCount ?? 0);
+          setViewers(message.viewers ?? []);
+        }
+
+        if (message.type === "stream-state") {
+          const paused = message.state === "paused";
+
+          setIsPaused(paused);
+          setStatus(paused ? "Stream paused." : "Live media is connected to SFU.");
+        }
+
         if (message.type === "info") {
           console.log("SFU info:", message.message);
         }
 
         if (message.type === "error") {
           setError(message.message || "SFU error");
-        }
-        if (message.type === "presence") {
-          setViewerCount(message.viewerCount ?? 0);
-          setViewers(message.viewers ?? []);
         }
       };
 
@@ -227,11 +242,13 @@ function StudioRoomContent() {
       socket.onclose = () => {
         setStatus("Disconnected from SFU.");
         setIsConnectedToSfu(false);
+        setIsPaused(false);
         socketRef.current = null;
       };
     } catch (connectError) {
       const message =
         connectError instanceof Error ? connectError.message : "Failed to connect to SFU";
+
       setError(message);
       cleanupSfu();
     }
@@ -245,6 +262,7 @@ function StudioRoomContent() {
     peerRef.current = null;
 
     setIsConnectedToSfu(false);
+    setIsPaused(false);
   };
 
   const enableCamera = async () => {
@@ -258,6 +276,7 @@ function StudioRoomContent() {
 
       mediaRef.current = media;
       setCameraReady(true);
+      setIsPaused(false);
 
       if (videoRef.current) {
         videoRef.current.srcObject = media;
@@ -265,55 +284,101 @@ function StudioRoomContent() {
 
       setStatus("Camera ready.");
     } catch (mediaError) {
-      const message = mediaError instanceof Error ? mediaError.message : "Camera access failed";
+      const message =
+        mediaError instanceof Error ? mediaError.message : "Camera access failed";
+
       setError(message);
     }
   };
 
-  const handleStart = async () => {
-    if (!token) {
+  const togglePause = () => {
+    if (!mediaRef.current) {
+      setError("Camera is not enabled.");
+      return;
+    }
+
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      setError("SFU is not connected.");
+      return;
+    }
+
+    const nextPaused = !isPaused;
+
+    mediaRef.current.getAudioTracks().forEach((track) => {
+      track.enabled = !nextPaused;
+    });
+
+    mediaRef.current.getVideoTracks().forEach((track) => {
+      track.enabled = !nextPaused;
+    });
+
+    socketRef.current.send(
+      JSON.stringify({
+        type: "stream-state",
+        state: nextPaused ? "paused" : "live",
+      })
+    );
+
+    setIsPaused(nextPaused);
+    setStatus(nextPaused ? "Stream paused." : "Stream resumed.");
+  };
+
+  const handleToggleStream = async () => {
+    if (!token || !stream) {
+      return;
+    }
+
+    setError(null);
+
+    if (stream.status === "live") {
+      setIsEnding(true);
+
+      try {
+        const updated = await api.endStream(token, streamId);
+
+        setStream(updated);
+
+        cleanupSfu();
+
+        mediaRef.current?.getTracks().forEach((track) => {
+          track.stop();
+        });
+
+        mediaRef.current = null;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+
+        setCameraReady(false);
+        setIsPaused(false);
+        setStatus("Stream ended.");
+      } catch (endError) {
+        const message =
+          endError instanceof Error ? endError.message : "Failed to end stream";
+
+        setError(message);
+      } finally {
+        setIsEnding(false);
+      }
+
       return;
     }
 
     setIsStarting(true);
-    setError(null);
 
     try {
       const updated = await api.startStream(token, streamId);
+
       setStream(updated);
       setStatus("Stream is now live. Enable camera, then connect to SFU.");
     } catch (startError) {
-      const message = startError instanceof Error ? startError.message : "Failed to start stream";
+      const message =
+        startError instanceof Error ? startError.message : "Failed to start stream";
+
       setError(message);
     } finally {
       setIsStarting(false);
-    }
-  };
-
-  const handleEnd = async () => {
-    if (!token) {
-      return;
-    }
-
-    setIsEnding(true);
-    setError(null);
-
-    try {
-      const updated = await api.endStream(token, streamId);
-      setStream(updated);
-
-      cleanupSfu();
-
-      mediaRef.current?.getTracks().forEach((track) => track.stop());
-      mediaRef.current = null;
-      setCameraReady(false);
-
-      setStatus("Stream ended.");
-    } catch (endError) {
-      const message = endError instanceof Error ? endError.message : "Failed to end stream";
-      setError(message);
-    } finally {
-      setIsEnding(false);
     }
   };
 
@@ -323,7 +388,14 @@ function StudioRoomContent() {
         <div>
           <p className="eyebrow">Studio room</p>
           <h1>{stream?.title || "Opening stream room..."}</h1>
-          <p className="muted hero-copy">{stream?.description || "No description available."}</p>
+          <p className="muted hero-copy">
+            {stream?.description || "No description available."}
+          </p>
+        </div>
+
+        <div className="stat-block">
+          <span>Live viewers</span>
+          <strong>{viewerCount}</strong>
         </div>
       </div>
 
@@ -340,6 +412,7 @@ function StudioRoomContent() {
         <section className="center-card error-surface">
           <p className="eyebrow">Access denied</p>
           <h2>This stream belongs to another broadcaster.</h2>
+
           <Link className="primary-button compact" href={`/watch/${streamId}`}>
             Open watch page instead
           </Link>
@@ -351,12 +424,19 @@ function StudioRoomContent() {
           <div className="panel stack-md">
             <div className="video-frame">
               <video autoPlay muted playsInline ref={videoRef} />
+
+              {isPaused ? (
+                <div className="pause-overlay">
+                  <strong>Paused</strong>
+                </div>
+              ) : null}
             </div>
 
             <div className="status-bar">
               <span className="status-dot" />
               <span>{status}</span>
             </div>
+
             <div className="panel stack-md">
               <div>
                 <p className="eyebrow">Live viewers</p>
@@ -391,30 +471,35 @@ function StudioRoomContent() {
 
               <button
                 className="ghost-button"
-                disabled={stream.status === "live" || isStarting}
-                onClick={handleStart}
-                type="button"
-              >
-                {isStarting ? "Starting..." : "Start stream"}
-              </button>
-
-              <button
-                className="ghost-button"
                 disabled={!cameraReady || stream.status !== "live" || isConnectedToSfu}
                 onClick={connectPublisherToSfu}
                 type="button"
               >
                 {isConnectedToSfu ? "Connected to SFU" : "Connect to SFU"}
               </button>
-
               <button
-                className="ghost-button danger"
-                disabled={stream.status !== "live" || isEnding}
-                onClick={handleEnd}
+                className={stream.status === "live" ? "ghost-button danger" : "ghost-button"}
+                disabled={isStarting || isEnding}
+                onClick={handleToggleStream}
                 type="button"
               >
-                {isEnding ? "Ending..." : "End stream"}
+                {isStarting
+                  ? "Starting..."
+                  : isEnding
+                    ? "Ending..."
+                    : stream.status === "live"
+                      ? "End stream"
+                      : "Start stream"}
               </button>
+              <button
+                className="ghost-button"
+                disabled={!cameraReady || !isConnectedToSfu}
+                onClick={togglePause}
+                type="button"
+              >
+                {isPaused ? "Resume stream" : "Pause stream"}
+              </button>
+
             </div>
 
             <div className="meta-list">
@@ -426,6 +511,11 @@ function StudioRoomContent() {
               <div>
                 <span>SFU</span>
                 <strong>{isConnectedToSfu ? "connected" : "not connected"}</strong>
+              </div>
+
+              <div>
+                <span>Broadcast</span>
+                <strong>{isPaused ? "paused" : "live"}</strong>
               </div>
 
               <div>

@@ -55,13 +55,31 @@ export type ViewerInfo = {
   username: string;
 };
 
+export type StreamState = "live" | "paused";
+
 export type SfuMessage = {
-  type: string;
+  type:
+    | "join"
+    | "offer"
+    | "answer"
+    | "ice"
+    | "leave"
+    | "error"
+    | "info"
+    | "renegotiate"
+    | "presence"
+    | "stream-state"
+    | string;
+
   sdp?: string;
   candidate?: RTCIceCandidateInit | null;
   message?: string;
   reason?: string;
+
   roomId?: string;
+
   viewerCount?: number;
   viewers?: ViewerInfo[];
+
+  state?: StreamState;
 };

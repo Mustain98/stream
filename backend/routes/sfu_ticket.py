@@ -30,9 +30,12 @@ def get_sfu_ticket(
 
     if role == "subscriber" and stream.status != "live":
         raise HTTPException(status_code=400, detail="Stream is not live")
+    
+    username = getattr(user, "username", None)
 
     token = create_sfu_ticket(
         user_id=user.id,
+        username=username,
         stream_id=stream_id,
         role=role,
     )

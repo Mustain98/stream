@@ -10,7 +10,7 @@ from db.session import engine
 
 from routes.auth import router as auth_router
 from routes.stream import router as stream_router
-from routes.websocket_ticket import router as sfu_ticket_router
+from routes.sfu_ticket import router as sfu_ticket_router
 
 
 app = FastAPI(title="Main Stream Backend")

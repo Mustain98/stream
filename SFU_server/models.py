@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Optional, Any
+
 from pydantic import BaseModel, Field
 
 
@@ -13,6 +14,7 @@ class SignalType(str, Enum):
     INFO = "info"
     RENEGOTIATE = "renegotiate"
     PRESENCE = "presence"
+    STREAM_STATE = "stream-state"
 
 
 class PeerRole(str, Enum):
@@ -22,12 +24,14 @@ class PeerRole(str, Enum):
 
 class JoinMessage(BaseModel):
     type: SignalType = Field(default=SignalType.JOIN)
-    roomId: str
-    role: PeerRole
 
-    # Sent by frontend for now.
-    # Later, get these by verifying the SFU ticket.
-    token: Optional[str] = None
+    # Now token is the only trusted field.
+    token: str
+
+    # Optional debug fields.
+    # SFU should ignore these for security decisions.
+    roomId: Optional[str] = None
+    role: Optional[PeerRole] = None
     userId: Optional[str] = None
     username: Optional[str] = None
 
@@ -62,17 +66,9 @@ class ErrorMessage(BaseModel):
     message: str
 
 
-class PresenceViewer(BaseModel):
-    peerId: str
-    userId: Optional[str] = None
-    username: str
-
-
-class PresenceMessage(BaseModel):
-    type: SignalType = Field(default=SignalType.PRESENCE)
-    roomId: str
-    viewerCount: int
-    viewers: list[PresenceViewer]
+class StreamStateMessage(BaseModel):
+    type: SignalType = Field(default=SignalType.STREAM_STATE)
+    state: str
 
 
 def parse_signal_message(data: dict[str, Any]):
@@ -89,5 +85,8 @@ def parse_signal_message(data: dict[str, Any]):
 
     if msg_type == SignalType.LEAVE.value:
         return LeaveMessage(**data)
+
+    if msg_type == SignalType.STREAM_STATE.value:
+        return StreamStateMessage(**data)
 
     raise ValueError(f"Unknown signaling message type: {msg_type}")

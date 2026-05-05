@@ -486,11 +486,32 @@ h3 {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(16, 21, 34, 0.12);
+  background: rgba(16, 21, 34, 0.04);
   border-radius: 0.75rem;
 }
 
 .viewer-list span {
   opacity: 0.65;
   font-size: 0.85rem;
+}
+
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.65);
+  color: white;
+  font-family: var(--headline);
+  font-size: 1.5rem;
+  font-weight: 700;
+  z-index: 2;
+}
+
+.pause-overlay strong {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.75rem 1.2rem;
 }

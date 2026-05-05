@@ -13,6 +13,8 @@ class Room:
         self.subscribers: Dict[str, object] = {}
 
         self.tracks: Dict[str,PublishedTrack]={}
+        self.stream_state = "live"
+
 
     def set_publisher(self,peer):
         self.publisher=peer
@@ -25,6 +27,7 @@ class Room:
             print(f"[Room {self.room_id}] Publisher removed")
             self.publisher = None
             self.tracks.clear()
+            self.stream_state="live"
 
         if peer_id in self.subscribers:
             print(f"[Room {self.room_id}] Subscriber removed:", peer_id)
@@ -85,3 +88,23 @@ class Room:
                 await peer.send_json(payload)
             except Exception as e:
                 print(f"[Room {self.room_id}] Failed to send presence:", e)
+
+    async def broadcast_stream_state(self):
+        payload = {
+            "type": "stream-state",
+            "roomId": self.room_id,
+            "state": self.stream_state,
+        }
+
+        targets = []
+
+        if self.publisher:
+            targets.append(self.publisher)
+
+        targets.extend(self.subscribers.values())
+
+        for peer in targets:
+            try:
+                await peer.send_json(payload)
+            except Exception as e:
+                print(f"[Room {self.room_id}] Failed to send stream state:", e)

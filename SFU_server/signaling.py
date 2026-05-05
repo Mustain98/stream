@@ -1,6 +1,7 @@
 from fastapi import WebSocket, WebSocketDisconnect
 from aiortc import RTCSessionDescription
 from aiortc.sdp import candidate_from_sdp
+from sfu_auth import verify_sfu_ticket
 
 from models import (
     SignalType,
@@ -33,8 +34,20 @@ class SignalingServer:
                 })
                 return
 
-            room_id = join_msg.roomId
-            role = join_msg.role
+            payload=verify_sfu_ticket(join_msg.token)
+
+            if not payload:
+                await websocket.send_json({
+                    "type":"error",
+                    "message":"Invalid or Expired SFU token"
+                })
+                await websocket.close()
+                return
+            
+            room_id = str(payload["stream_id"])
+            role = payload["role"]
+            user_id = str(payload["sub"])
+            username = payload.get("username") or "Unknown"
 
             room = self.get_or_create_room(room_id)
 
@@ -42,8 +55,8 @@ class SignalingServer:
                 role=role,
                 room_id=room_id,
                 websocket=websocket,
-                user_id=join_msg.userId,
-                username=join_msg.username,
+                user_id=user_id,
+                username=username,
             )
 
             await peer.create_peer_connection()
@@ -125,6 +138,9 @@ class SignalingServer:
         elif msg.type == SignalType.LEAVE:
             await self.handle_leave(peer, room)
 
+        elif msg.type == SignalType.STREAM_STATE:
+            await self.handle_stream_state(peer, room, msg)
+
     async def handle_offer(self, peer, room, msg):
         """
         Browser sends offer.
@@ -160,8 +176,11 @@ class SignalingServer:
         aiortc expects parsed candidate objects, not the raw browser candidate string.
         """
 
-        if not msg.candidate:
-            await peer.pc.addIceCandidate(None)
+        if msg.candidate is None:
+            try:
+                await peer.pc.addIceCandidate(None)
+            except Exception as e:
+                print(f"[Signaling] End-of-candidates ignored: {e}")
             return
 
         candidate_text = msg.candidate.candidate
@@ -194,3 +213,26 @@ class SignalingServer:
             @track.on("ended")
             async def on_ended():
                 print(f"[Signaling] Publisher track ended: {track.kind}")
+    
+    async def handle_stream_state(self, peer, room, msg):
+        # SECURITY: only verified publisher can change stream state.
+        if peer.role != PeerRole.PUBLISHER.value:
+            await peer.send_json({
+                "type": "error",
+                "message": "Only publisher can change stream state",
+            })
+            return
+
+        if msg.state not in ["paused", "live"]:
+            await peer.send_json({
+                "type": "error",
+                "message": "Invalid stream state",
+            })
+            return
+
+        room.stream_state = msg.state
+
+        if hasattr(room, "broadcast_stream_state"):
+            await room.broadcast_stream_state()
+
+        print(f"[Room {room.room_id}] Stream state changed to {msg.state}")
