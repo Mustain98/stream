@@ -2,7 +2,16 @@ from sqlmodel import Session, select
 from datetime import datetime
 from models import Stream, StreamStatus, StreamEvent, EventType, ViewerSession
 from schemas import StreamCreate
+from datetime import datetime, timedelta, timezone
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+LIVE_TTL_SECONDS = int(os.getenv("LIVE_TTL_SECONDS"))
+
+def utc_now():
+    return datetime.utcnow()
 
 def get_stream(session: Session, stream_id: str):
     return session.get(Stream, stream_id)
@@ -74,10 +83,14 @@ def start_stream(session: Session, stream_id: str, user_id: str):
 
     if not stream or stream.broadcaster_id != user_id:
         return None
+    
+    if stream.status == StreamStatus.ENDED:
+        return None
 
+    now=utc_now()
     stream.status = StreamStatus.LIVE
-    stream.started_at = datetime.utcnow()
-
+    stream.started_at = now
+    stream.live_expires_at= now+timedelta(seconds=LIVE_TTL_SECONDS)
     session.add(stream)
 
     event = StreamEvent(
@@ -100,8 +113,8 @@ def end_stream(session: Session, stream_id: str, user_id: str):
         return None
 
     stream.status = StreamStatus.ENDED
-    stream.ended_at = datetime.utcnow()
-
+    stream.ended_at = utc_now()
+    
     session.add(stream)
 
     event = StreamEvent(

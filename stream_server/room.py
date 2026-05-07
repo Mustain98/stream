@@ -52,7 +52,6 @@ class Room:
     def is_empty(self):
         return self.publisher is None and len(self.subscribers) == 0
 
-
     def get_viewer_list(self):
         return [
             {

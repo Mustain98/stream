@@ -8,6 +8,12 @@ from models import (
     PeerRole,
     parse_signal_message,
 )
+import asyncio
+
+from backend_client import (
+    heartbeat_publisher,
+    SFU_HEARTBEAT_INTERVAL_SECONDS,
+)
 from peer import Peer
 
 class SignalingServer:
@@ -71,6 +77,7 @@ class SignalingServer:
                     return
 
                 room.set_publisher(peer)
+                await self.start_publisher_heartbeat(peer, room)
                 self.setup_publisher_track_handler(peer, room)
 
                 await peer.send_json({
@@ -81,6 +88,7 @@ class SignalingServer:
                 })
 
                 await room.broadcast_presence()
+                await room.broadcast_stream_state()
 
                 print(f"[Signaling] Publisher joined room {room_id}")
 
@@ -98,7 +106,8 @@ class SignalingServer:
                 })
 
                 await room.broadcast_presence()
-
+                await room.broadcast_stream_state()
+                
                 print(f"[Signaling] Subscriber joined room {room_id}")
 
             while True:
@@ -124,6 +133,7 @@ class SignalingServer:
             if peer and room:
                 room.remove_peer(peer.id)
                 await peer.close()
+
                 if not room.is_empty():
                     await room.broadcast_presence()
                 self.remove_room_if_empty(room.room_id)
@@ -236,3 +246,17 @@ class SignalingServer:
             await room.broadcast_stream_state()
 
         print(f"[Room {room.room_id}] Stream state changed to {msg.state}")
+
+    async def start_publisher_heartbeat(self, peer, room):
+        async def heartbeat_loop():
+            # Send immediately once publisher is accepted.
+            await heartbeat_publisher(room.room_id)
+
+            while True:
+                await asyncio.sleep(SFU_HEARTBEAT_INTERVAL_SECONDS)
+                await heartbeat_publisher(room.room_id)
+
+        peer.heartbeat_task = asyncio.create_task(heartbeat_loop())
+
+
+        

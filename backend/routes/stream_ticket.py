@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
 from core.security import get_current_user
-from core.ws_ticket import create_sfu_ticket
+from core.stream_ticket import create_sfu_ticket
 from db.session import get_session
 from models import Stream
 

@@ -15,6 +15,7 @@ class Peer:
 
         self.pc = None
         self.attached_kinds: set[str] = set()
+        self.heartbeat_task=None
 
     async def create_peer_connection(self):
         pc = RTCPeerConnection()
@@ -41,6 +42,10 @@ class Peer:
         await self.websocket.send_json(message)
 
     async def close(self):
+        if self.heartbeat_task:
+            self.heartbeat_task.cancel()
+            self.heartbeat_task = None
+
         pc = self.pc
 
         if not pc:
