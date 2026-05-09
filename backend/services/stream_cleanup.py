@@ -1,17 +1,43 @@
 import asyncio
+import os
 from datetime import datetime
 
+from dotenv import load_dotenv
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, select
 
 from db.session import engine
-from models import Stream, StreamStatus
+from models import Stream, StreamStatus, ViewerSession
 
-CLEANUP_INTERVAL_SECONDS = 30
+load_dotenv()
+
+CLEANUP_INTERVAL_SECONDS = int(
+    os.getenv("STREAM_CLEANUP_INTERVAL_SECONDS", "30")
+)
 
 
 def utc_now():
     return datetime.utcnow()
+
+
+def handle_all_viewer_session_leave(
+    stream_id: str,
+    session: Session,
+    left_at: datetime,
+) -> int:
+    viewer_sessions = session.exec(
+        select(ViewerSession).where(
+            ViewerSession.stream_id == stream_id,
+            ViewerSession.is_active == True,
+        )
+    ).all()
+
+    for viewer_session in viewer_sessions:
+        viewer_session.is_active = False
+        viewer_session.left_at = left_at
+        session.add(viewer_session)
+
+    return len(viewer_sessions)
 
 
 def expire_stale_live_streams() -> int:
@@ -35,6 +61,14 @@ def expire_stale_live_streams() -> int:
                 "now=",
                 now,
             )
+
+            viewer_count = handle_all_viewer_session_leave(
+                stream_id=stream.id,
+                session=session,
+                left_at=now,
+            )
+
+            print(f"[TTL] Marked {viewer_count} viewer session(s) as left")
 
             stream.status = StreamStatus.ENDED
             stream.ended_at = now

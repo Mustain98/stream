@@ -1,8 +1,7 @@
 from sqlmodel import Session, select
-from datetime import datetime
 from models import Stream, StreamStatus, StreamEvent, EventType, ViewerSession
 from schemas import StreamCreate
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
@@ -16,16 +15,20 @@ def utc_now():
 def get_stream(session: Session, stream_id: str):
     return session.get(Stream, stream_id)
 
-def get_viewer_count(session: Session, stream_id: str):
-    viewers = session.exec(
+def get_unique_viewer_count(session: Session, stream_id: str) -> int:
+    viewer_sessions = session.exec(
         select(ViewerSession).where(
             ViewerSession.stream_id == stream_id,
-            ViewerSession.is_active == True
         )
     ).all()
 
-    return len(viewers)
+    unique_user_ids = {
+        viewer.user_id
+        for viewer in viewer_sessions
+        if viewer.user_id is not None
+    }
 
+    return len(unique_user_ids)
 
 def list_live_streams(session: Session):
     streams = session.exec(
@@ -40,7 +43,6 @@ def list_live_streams(session: Session):
             "status": stream.status.value,
             "broadcaster_id": stream.broadcaster_id,
             "started_at": stream.started_at,
-            "viewer_count": get_viewer_count(session, stream.id),
         }
         for stream in streams
     ]
@@ -59,7 +61,7 @@ def list_owned_streams(session: Session, user_id: str):
             "status": stream.status.value,
             "broadcaster_id": stream.broadcaster_id,
             "started_at": stream.started_at,
-            "viewer_count": get_viewer_count(session, stream.id),
+            "viewer_count":get_unique_viewer_count(session,stream.id)
         }
         for stream in streams
     ]
@@ -114,8 +116,21 @@ def end_stream(session: Session, stream_id: str, user_id: str):
 
     stream.status = StreamStatus.ENDED
     stream.ended_at = utc_now()
+    stream.live_expires_at=None
     
     session.add(stream)
+
+    active_viewers = session.exec(
+        select(ViewerSession).where(
+            ViewerSession.stream_id == stream_id,
+            ViewerSession.is_active == True,
+        )
+    ).all()
+
+    for viewer in active_viewers:
+        viewer.is_active = False
+        viewer.left_at = utc_now()
+        session.add(viewer)
 
     event = StreamEvent(
         stream_id=stream.id,
@@ -206,3 +221,4 @@ def leave_stream(session: Session, stream_id: str, user_id: str):
 
     return viewer
     
+

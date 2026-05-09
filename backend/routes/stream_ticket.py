@@ -7,7 +7,7 @@ from sqlmodel import Session
 from core.security import get_current_user
 from core.stream_ticket import create_sfu_ticket
 from db.session import get_session
-from models import Stream
+from models import Stream,StreamStatus
 
 router = APIRouter(prefix="/sfu", tags=["sfu"])
 
@@ -28,8 +28,16 @@ def get_sfu_ticket(
 
     role = "publisher" if user.id == stream.broadcaster_id else "subscriber"
 
-    if role == "subscriber" and stream.status != "live":
+    if role == "subscriber" and stream.status != StreamStatus.LIVE:
         raise HTTPException(status_code=400, detail="Stream is not live")
+    
+    if stream.status != StreamStatus.LIVE:
+        raise HTTPException(
+            status_code=400,
+            detail="Start the stream before requesting an SFU ticket"
+            if role == "publisher"
+            else "Stream is not live",
+        )
     
     username = getattr(user, "username", None)
 

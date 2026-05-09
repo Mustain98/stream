@@ -5,13 +5,11 @@ import type {
   StreamSummary,
   TokenResponse,
   User,
+  ViewerCountResponse,
 } from "./types";
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
-export const SFU_WS_URL =
-  process.env.NEXT_PUBLIC_SFU_WS_URL ?? "ws://localhost:7001/ws";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   token?: string | null;
@@ -96,6 +94,12 @@ export const api = {
 
   getStream: (streamId: string) =>
     request<StreamDetailsResponse>(`/stream/${streamId}`, {
+      cache: "no-store",
+    }),
+
+  getViewerCount: (token: string, streamId: string) =>
+    request<ViewerCountResponse>(`/stream/${streamId}/viewers`, {
+      token,
       cache: "no-store",
     }),
 

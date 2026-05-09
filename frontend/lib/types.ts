@@ -18,7 +18,7 @@ export type StreamSummary = {
   status: string;
   broadcaster_id: string;
   started_at: string | null;
-  viewer_count: number;
+  viewer_count?: number;
 };
 
 export type StreamRecord = {
@@ -34,6 +34,10 @@ export type StreamRecord = {
 
 export type StreamDetailsResponse = {
   stream: StreamRecord;
+};
+
+export type ViewerCountResponse = {
+  stream_id: string;
   viewer_count: number;
 };
 
@@ -75,11 +79,8 @@ export type SfuMessage = {
   candidate?: RTCIceCandidateInit | null;
   message?: string;
   reason?: string;
-
   roomId?: string;
-
   viewerCount?: number;
   viewers?: ViewerInfo[];
-
   state?: StreamState;
 };
