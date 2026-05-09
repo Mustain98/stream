@@ -1,5 +1,7 @@
 import type {
   ApiError,
+  BlockedUsersResponse,
+  BlockViewerResponse,
   SfuTicketResponse,
   StreamDetailsResponse,
   StreamSummary,
@@ -139,4 +141,23 @@ export const api = {
       method: "POST",
       token,
     }),
+
+    blockViewer: (token: string, streamId: string, userId: string, reason = "blocked") =>
+  request<BlockViewerResponse>(`/stream/${streamId}/block/${userId}`, {
+    method: "POST",
+    token,
+    body: { reason },
+  }),
+
+unblockViewer: (token: string, streamId: string, userId: string) =>
+  request<BlockViewerResponse>(`/stream/${streamId}/block/${userId}`, {
+    method: "DELETE",
+    token,
+  }),
+
+getBlockedUsers: (token: string, streamId: string) =>
+  request<BlockedUsersResponse>(`/stream/${streamId}/blocked-users`, {
+    token,
+    cache: "no-store",
+  }),
 };

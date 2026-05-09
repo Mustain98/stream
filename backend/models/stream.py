@@ -11,10 +11,12 @@ class StreamStatus(str, enum.Enum):
     ENDED = "ended"
 
 class EventType(str, enum.Enum):
-    JOIN = "join"
-    LEAVE = "leave"
     START = "start"
     END = "end"
+    JOIN = "join"
+    LEAVE = "leave"
+    BLOCK = "block"
+    UNBLOCK = "unblock"
 
 
 

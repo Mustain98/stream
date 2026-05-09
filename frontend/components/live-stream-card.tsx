@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { formatStreamStatus } from "../lib/stream-utils";
+import { formatStreamStatus, isLiveStatus } from "../lib/stream-utils";
 import type { StreamSummary } from "../lib/types";
 
 export function LiveStreamCard({
@@ -12,12 +12,18 @@ export function LiveStreamCard({
   href?: string;
   ctaLabel?: string;
 }) {
+  const isLive = isLiveStatus(stream.status);
+  const shouldShowViewerCount =
+    !isLive && typeof stream.viewer_count === "number";
+
   return (
     <Link className="stream-card" href={href ?? `/watch/${stream.id}`}>
       <div className="card-topline">
-        <span className="live-pill">{formatStreamStatus(stream.status)}</span>
+        <span className={isLive ? "live-pill active" : "live-pill"}>
+          {formatStreamStatus(stream.status)}
+        </span>
 
-        {typeof stream.viewer_count === "number" ? (
+        {shouldShowViewerCount ? (
           <span className="viewer-pill">{stream.viewer_count} viewers</span>
         ) : null}
       </div>

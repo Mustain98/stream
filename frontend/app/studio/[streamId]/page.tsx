@@ -5,10 +5,13 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RequireAuth } from "../../../components/require-auth";
+import { StudioControlsPanel } from "../../../components/studio-control-panel";
+import { StudioVideoPanel } from "../../../components/studio-video-panel";
 import { useSession } from "../../../components/session-provider";
 import { api } from "../../../lib/api";
 import { isEndedStatus, isLiveStatus } from "../../../lib/stream-utils";
 import { useSfuPublisher } from "../../../lib/use-sfu-publisher";
+import { useStreamModeration } from "../../../lib/use-stream-moderation";
 import { useStreamRoom } from "../../../lib/use-stream-room";
 
 export default function StudioRoomPage() {
@@ -34,8 +37,9 @@ function StudioRoomContent() {
   const [localError, setLocalError] = useState<string | null>(null);
 
   const room = useStreamRoom(streamId, token);
+  const publisher = useSfuPublisher({ token, streamId });
 
-  const publisher = useSfuPublisher({
+  const moderation = useStreamModeration({
     token,
     streamId,
   });
@@ -46,13 +50,13 @@ function StudioRoomContent() {
   const isLive = isLiveStatus(stream?.status);
   const isEnded = isEndedStatus(stream?.status);
   const canGoLive = Boolean(stream && !isLive && !isEnded);
-
   const cameraReady = Boolean(localStream);
 
   const viewerCount = isLive ? publisher.viewerCount : room.apiViewerCount;
   const viewers = isLive ? publisher.viewers : [];
 
-  const error = localError || room.error || publisher.error;
+  const error =
+    localError || room.error || publisher.error || moderation.moderationError;
 
   const status = useMemo(() => {
     if (isEnded) {
@@ -123,6 +127,14 @@ function StudioRoomContent() {
   }, []);
 
   useEffect(() => {
+    if (!stream || !isOwner || !token) {
+      return;
+    }
+
+    void moderation.loadBlockedUsers();
+  }, [stream?.id, isOwner, token, moderation.loadBlockedUsers]);
+
+  useEffect(() => {
     if (!stream || !isOwner || !isLive || isEnded) {
       return;
     }
@@ -152,7 +164,7 @@ function StudioRoomContent() {
 
     void restoreBroadcast();
 
-    // Intentionally limited dependencies to avoid reconnect loops.
+    // Intentionally limited to avoid reconnect loops.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream?.id, isOwner, isLive, isEnded]);
 
@@ -286,14 +298,6 @@ function StudioRoomContent() {
     });
   };
 
-  const formatDateTime = (value: string | null) => {
-    if (!value) {
-      return "—";
-    }
-
-    return new Date(value).toLocaleString();
-  };
-
   return (
     <section className="stack-xl">
       <div className="hero-panel">
@@ -331,210 +335,50 @@ function StudioRoomContent() {
         </section>
       ) : null}
 
-  {stream && isOwner ? (
-    <div className="studio-room-grid">
-      {/* LEFT PANEL */}
-      <div className="panel stack-md">
-        <div className="video-frame">
-          <video autoPlay muted playsInline ref={videoRef} />
+      {stream && isOwner ? (
+        <div className="studio-room-grid">
+          <StudioVideoPanel
+            videoRef={videoRef}
+            isLive={isLive}
+            isEnded={isEnded}
+            cameraReady={cameraReady}
+            isPaused={publisher.isPaused}
+            isConnected={publisher.isConnected}
+            isCameraEnabled={publisher.isCameraEnabled}
+            isMicEnabled={publisher.isMicEnabled}
+            status={status}
+            reconnectFailed={publisher.reconnectFailed}
+            viewerCount={viewerCount}
+            viewers={viewers}
+            onTogglePause={publisher.togglePause}
+            onToggleCamera={publisher.toggleCamera}
+            onToggleMic={publisher.toggleMic}
+            onBlockViewer={moderation.blockViewer}
+          />
 
-          {publisher.isPaused && isLive ? (
-            <div className="pause-overlay">
-              <strong>Paused</strong>
-            </div>
-          ) : null}
-
-          {isEnded ? (
-            <div className="pause-overlay">
-              <strong>Stream ended</strong>
-            </div>
-          ) : null}
+          <StudioControlsPanel
+            stream={stream}
+            isLive={isLive}
+            isEnded={isEnded}
+            canGoLive={canGoLive}
+            isUpdatingStream={isUpdatingStream}
+            publisherIsConnecting={publisher.isConnecting}
+            publisherIsConnected={publisher.isConnected}
+            publisherIsReconnecting={publisher.isReconnecting}
+            publisherReconnectFailed={publisher.reconnectFailed}
+            publisherIsPaused={publisher.isPaused}
+            publisherIsCameraEnabled={publisher.isCameraEnabled}
+            publisherIsMicEnabled={publisher.isMicEnabled}
+            viewerCount={viewerCount}
+            blockedUsers={moderation.blockedUsers}
+            isLoadingBlockedUsers={moderation.isLoadingBlockedUsers}
+            onGoLive={goLive}
+            onEndLive={endLive}
+            onTryAgain={tryAgain}
+            onUnblockViewer={moderation.unblockViewer}
+          />
         </div>
-
-        {isLive && !isEnded ? (
-          <div className="video-resource-controls">
-            <button
-              aria-label={publisher.isPaused ? "Resume stream" : "Pause stream"}
-              className={publisher.isPaused ? "resource-button active" : "resource-button"}
-              disabled={!cameraReady || !publisher.isConnected}
-              onClick={publisher.togglePause}
-              title={publisher.isPaused ? "Resume stream" : "Pause stream"}
-              type="button"
-            >
-              {publisher.isPaused ? "▶" : "⏸"}
-            </button>
-
-            <button
-              aria-label={publisher.isCameraEnabled ? "Turn camera off" : "Turn camera on"}
-              className={
-                publisher.isCameraEnabled ? "resource-button" : "resource-button muted"
-              }
-              disabled={!cameraReady || publisher.isPaused}
-              onClick={publisher.toggleCamera}
-              title={publisher.isCameraEnabled ? "Turn camera off" : "Turn camera on"}
-              type="button"
-            >
-              {publisher.isCameraEnabled ? "🎥" : "🚫"}
-            </button>
-
-            <button
-              aria-label={publisher.isMicEnabled ? "Mute mic" : "Unmute mic"}
-              className={publisher.isMicEnabled ? "resource-button" : "resource-button muted"}
-              disabled={!cameraReady || publisher.isPaused}
-              onClick={publisher.toggleMic}
-              title={publisher.isMicEnabled ? "Mute mic" : "Unmute mic"}
-              type="button"
-            >
-              {publisher.isMicEnabled ? "🎙" : "🔇"}
-            </button>
-          </div>
-        ) : null}
-
-        <div className="status-bar">
-          <span className="status-dot" />
-          <span>{status}</span>
-        </div>
-
-        {publisher.reconnectFailed && isLive && !isEnded ? (
-          <div className="error-banner">
-            <strong>Connection lost.</strong>{" "}
-            Your stream may still be live for a short time.
-          </div>
-        ) : null}
-
-        <div className="panel stack-md">
-          <div>
-            <p className="eyebrow">{isLive ? "Live viewers" : "Viewers"}</p>
-            <h2>
-              {viewerCount} {isLive ? "watching" : "viewers"}
-            </h2>
-          </div>
-
-          {isLive ? (
-            viewers.length === 0 ? (
-              <p className="muted">No viewers connected yet.</p>
-            ) : (
-              <ul className="viewer-list">
-                {viewers.map((viewer) => (
-                  <li key={viewer.peerId}>
-                    <strong>{viewer.username}</strong>
-                    <span>{viewer.userId}</span>
-                  </li>
-                ))}
-              </ul>
-            )
-          ) : (
-            <p className="muted">
-              This viewer count is loaded from the saved stream record.
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* RIGHT PANEL */}
-      <div className="panel stack-md">
-        <div>
-          <p className="eyebrow">Broadcast controls</p>
-          <h2>{isEnded ? "Stream summary" : "Manage this room"}</h2>
-        </div>
-
-        <div className="stack-sm">
-          {canGoLive ? (
-            <button
-              className="primary-button"
-              disabled={isUpdatingStream || publisher.isConnecting}
-              onClick={goLive}
-              type="button"
-            >
-              {isUpdatingStream || publisher.isConnecting ? "Going live..." : "Go Live"}
-            </button>
-          ) : null}
-
-          {isLive ? (
-            <button
-              className="ghost-button danger"
-              disabled={isUpdatingStream}
-              onClick={endLive}
-              type="button"
-            >
-              {isUpdatingStream ? "Ending..." : "End Live"}
-            </button>
-          ) : null}
-
-          {isEnded ? (
-            <Link className="primary-button" href="/studio">
-              Back to studio
-            </Link>
-          ) : null}
-
-          {publisher.reconnectFailed && isLive && !isEnded ? (
-            <button className="primary-button" onClick={tryAgain} type="button">
-              Try Again
-            </button>
-          ) : null}
-        </div>
-
-        <div className="meta-list">
-          <div>
-            <span>Status</span>
-            <strong>{stream.status}</strong>
-          </div>
-
-          {isEnded ? (
-            <>
-              <div>
-                <span>Viewers</span>
-                <strong>{viewerCount}</strong>
-              </div>
-
-              <div>
-                <span>Started</span>
-                <strong>{formatDateTime(stream.started_at)}</strong>
-              </div>
-
-              <div>
-                <span>Ended</span>
-                <strong>{formatDateTime(stream.ended_at)}</strong>
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <span>Broadcast</span>
-                <strong>
-                  {publisher.isConnected
-                    ? "connected"
-                    : publisher.isReconnecting
-                      ? "reconnecting"
-                      : "not connected"}
-                </strong>
-              </div>
-
-              <div>
-                <span>Camera</span>
-                <strong>{publisher.isCameraEnabled ? "on" : "off"}</strong>
-              </div>
-
-              <div>
-                <span>Mic</span>
-                <strong>{publisher.isMicEnabled ? "on" : "muted"}</strong>
-              </div>
-
-              <div>
-                <span>Playback</span>
-                <strong>{publisher.isPaused ? "paused" : "live"}</strong>
-              </div>
-            </>
-          )}
-
-          <div>
-            <span>Stream ID</span>
-            <strong>{stream.id}</strong>
-          </div>
-        </div>
-      </div>
-    </div>
-  ) : null}
+      ) : null}
     </section>
   );
 }

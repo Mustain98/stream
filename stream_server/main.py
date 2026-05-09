@@ -1,10 +1,15 @@
-from fastapi import FastAPI, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
+import os
 
+from dotenv import load_dotenv
+from fastapi import FastAPI, WebSocket, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from models import UnblockUserRequest
 from room import Room
 from media_router import MediaRouter
 from signaling import SignalingServer
 
+load_dotenv()
 
 app = FastAPI(title="Custom Python SFU Server")
 
@@ -16,8 +21,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SFU_INTERNAL_SECRET = os.getenv("SFU_INTERNAL_SECRET")
 
 rooms = {}
+
+
+class KickUserRequest(BaseModel):
+    stream_id: str
+    user_id: str
+    reason: str = "blocked"
+
+
+def verify_internal_secret(x_sfu_secret: str | None):
+    if not SFU_INTERNAL_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="SFU_INTERNAL_SECRET is not configured",
+        )
+
+    if x_sfu_secret != SFU_INTERNAL_SECRET:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid internal secret",
+        )
 
 
 def get_or_create_room(room_id: str):
@@ -63,9 +89,81 @@ async def list_rooms():
             "hasPublisher": room.publisher is not None,
             "subscriberCount": len(room.subscribers),
             "tracks": list(room.tracks.keys()),
+            "blockedUsers": list(room.blocked_user_ids),
         }
 
     return result
+
+
+@app.post("/internal/kick-user")
+async def kick_user_from_room(
+    payload: KickUserRequest,
+    x_sfu_secret: str | None = Header(default=None),
+):
+    verify_internal_secret(x_sfu_secret)
+
+    room = rooms.get(payload.stream_id)
+
+    if not room:
+        return {
+            "status": "ignored",
+            "reason": "room_not_found",
+            "stream_id": payload.stream_id,
+            "user_id": payload.user_id,
+            "kicked": 0,
+        }
+
+    room.block_user(payload.user_id)
+
+    kicked_count = await room.kick_user(
+        user_id=payload.user_id,
+        reason=payload.reason,
+    )
+
+    print(
+        "[Internal] Kick user:",
+        "room=", payload.stream_id,
+        "user_id=", payload.user_id,
+        "kicked=", kicked_count,
+    )
+
+    return {
+        "status": "ok",
+        "stream_id": payload.stream_id,
+        "user_id": payload.user_id,
+        "kicked": kicked_count,
+    }
+
+@app.post("/internal/unblock-user")
+async def unblock_user_from_room(
+    payload: UnblockUserRequest,
+    x_sfu_secret: str | None = Header(default=None),
+):
+    verify_internal_secret(x_sfu_secret)
+
+    room = rooms.get(payload.stream_id)
+
+    if not room:
+        return {
+            "status": "ignored",
+            "reason": "room_not_found",
+            "stream_id": payload.stream_id,
+            "user_id": payload.user_id,
+        }
+
+    room.unblock_user(payload.user_id)
+
+    print(
+        "[Internal] Unblock user:",
+        "room=", payload.stream_id,
+        "user_id=", payload.user_id,
+    )
+
+    return {
+        "status": "ok",
+        "stream_id": payload.stream_id,
+        "user_id": payload.user_id,
+    }
 
 
 @app.websocket("/ws")

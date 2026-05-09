@@ -73,6 +73,7 @@ export type SfuMessage = {
     | "renegotiate"
     | "presence"
     | "stream-state"
+    | "kicked"
     | string;
 
   sdp?: string;
@@ -83,4 +84,26 @@ export type SfuMessage = {
   viewerCount?: number;
   viewers?: ViewerInfo[];
   state?: StreamState;
+};
+
+export type BlockedUser = {
+  id: string;
+  stream_id: string;
+  user_id: string;
+  username: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type BlockedUsersResponse = {
+  stream_id: string;
+  blocked_users: BlockedUser[];
+};
+
+export type BlockViewerResponse = {
+  status: string;
+  stream_id: string;
+  user_id: string;
+  reason?: string | null;
+  sfu?: unknown;
 };

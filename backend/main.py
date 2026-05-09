@@ -13,6 +13,7 @@ from routes.auth import router as auth_router
 from routes.stream import router as stream_router
 from routes.stream_ticket import router as sfu_ticket_router
 from routes.stream_server import router as sfu_internal_router
+from routes.stream_control import router as stream_control_router
 from services.stream_cleanup import stream_cleanup_loop
 
 
@@ -57,6 +58,7 @@ app.include_router(auth_router)
 app.include_router(stream_router)
 app.include_router(sfu_ticket_router)
 app.include_router(sfu_internal_router)
+app.include_router(stream_control_router)
 
 
 @app.get("/")

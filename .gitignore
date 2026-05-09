@@ -16,7 +16,7 @@ __pycache__/
 .coverage
 htmlcov/
 backend/venv/
-SFU_server/venv/
+stream_server/venv/
 
 # Node / Next.js frontend
 frontend/node_modules/

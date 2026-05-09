@@ -15,6 +15,7 @@ class SignalType(str, Enum):
     RENEGOTIATE = "renegotiate"
     PRESENCE = "presence"
     STREAM_STATE = "stream-state"
+    KICKED = "kicked"
 
 
 class PeerRole(str, Enum):
@@ -90,3 +91,12 @@ def parse_signal_message(data: dict[str, Any]):
         return StreamStateMessage(**data)
 
     raise ValueError(f"Unknown signaling message type: {msg_type}")
+
+class KickUserRequest(BaseModel):
+    stream_id: str
+    user_id: str
+    reason: str = "blocked"
+
+class UnblockUserRequest(BaseModel):
+    stream_id: str
+    user_id: str

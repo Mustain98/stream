@@ -216,6 +216,11 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
         if (message.type === "error") {
           setError(message.message || "Stream server error");
         }
+
+        if (message.type === "kicked") {
+          setError(message.message || "You were removed from this live stream.");
+          disconnect();
+        }
       };
 
       socket.onerror = () => {
