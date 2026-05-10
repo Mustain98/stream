@@ -1,15 +1,6 @@
-from datetime import datetime
-
 from sqlmodel import Session, select
 
-from models import (
-    Stream,
-    StreamBlocked,
-    StreamEvent,
-    EventType,
-    ViewerSession,
-    User,
-)
+from models import StreamBlocked, User
 
 
 def get_stream_block(
@@ -31,6 +22,7 @@ def is_user_blocked(
     user_id: str,
 ) -> bool:
     return get_stream_block(session, stream_id, user_id) is not None
+
 
 def get_blocked_users_for_stream(session: Session, stream_id: str):
     blocked_rows = session.exec(
@@ -58,89 +50,26 @@ def get_blocked_users_for_stream(session: Session, stream_id: str):
     return result
 
 
-def block_stream_user(
+def create_stream_block(
     session: Session,
-    stream: Stream,
-    blocked_user_id: str,
+    stream_id: str,
+    user_id: str,
     reason: str | None = "blocked",
-):
-    blocked_user = session.get(User, blocked_user_id)
-
-    if not blocked_user:
-        return None
-
-    existing_block = get_stream_block(
-        session=session,
-        stream_id=stream.id,
-        user_id=blocked_user_id,
-    )
-
-    if existing_block:
-        return existing_block
-
-    now = datetime.utcnow()
-
-    active_viewer_sessions = session.exec(
-        select(ViewerSession).where(
-            ViewerSession.stream_id == stream.id,
-            ViewerSession.user_id == blocked_user_id,
-            ViewerSession.is_active == True,
-        )
-    ).all()
-
-    for viewer_session in active_viewer_sessions:
-        viewer_session.is_active = False
-        viewer_session.left_at = now
-        session.add(viewer_session)
-
-    stream_event = StreamEvent(
-        stream_id=stream.id,
-        user_id=blocked_user_id,
-        event_type=EventType.BLOCK,
-    )
-    session.add(stream_event)
-
+) -> StreamBlocked:
     blocked = StreamBlocked(
-        stream_id=stream.id,
-        user_id=blocked_user_id,
+        stream_id=stream_id,
+        user_id=user_id,
         reason=reason,
     )
-    session.add(blocked)
 
-    session.commit()
-    session.refresh(blocked)
+    session.add(blocked)
 
     return blocked
 
 
-def unblock_stream_user(
-    session: Session,
-    stream: Stream,
-    unblocked_user_id: str,
-):
-    unblocked_user = session.get(User, unblocked_user_id)
+def delete_stream_block(session: Session, block: StreamBlocked):
+    session.delete(block)
 
-    if not unblocked_user:
-        return None
 
-    existing_block = get_stream_block(
-        session=session,
-        stream_id=stream.id,
-        user_id=unblocked_user_id,
-    )
-
-    if not existing_block:
-        return "not_blocked"
-
-    session.delete(existing_block)
-
-    stream_event = StreamEvent(
-        stream_id=stream.id,
-        user_id=unblocked_user_id,
-        event_type=EventType.UNBLOCK,
-    )
-    session.add(stream_event)
-
-    session.commit()
-
-    return "unblocked"
+def get_user(session: Session, user_id: str):
+    return session.get(User, user_id)

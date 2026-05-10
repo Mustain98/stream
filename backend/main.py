@@ -3,6 +3,7 @@
 import os
 import asyncio
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
@@ -19,10 +20,8 @@ from services.stream_cleanup import stream_cleanup_loop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create database tables on startup
     SQLModel.metadata.create_all(engine)
 
-    # Start cleanup background task
     cleanup_task = asyncio.create_task(stream_cleanup_loop())
 
     try:

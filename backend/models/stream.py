@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 import uuid
 import enum
-
+from sqlalchemy import Index
 
 class StreamStatus(str, enum.Enum):
     OFFLINE = "offline"
@@ -40,6 +40,16 @@ class Stream(SQLModel, table=True):
 
 class ViewerSession(SQLModel, table=True):
     __tablename__ = "viewer_sessions"
+
+    __table_args__ = (
+        Index(
+            "idx_unique_active_viewer_session",
+            "stream_id",
+            "user_id",
+            unique=True,
+            postgresql_where="is_active = true",
+        ),
+    )
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
 

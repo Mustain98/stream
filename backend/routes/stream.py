@@ -3,16 +3,15 @@ from sqlmodel import Session
 
 from db.session import get_session
 from core.security import get_current_user
-from services.stream_service import (
-    create_stream,
-    start_stream,
-    end_stream,
-    join_stream,
-    leave_stream,
-    get_stream,
-    get_unique_viewer_count,
-    list_live_streams,
-    list_owned_streams,
+from services.stream_service import get_stream
+from controllers.stream_controller import (
+    create_stream_controller,
+    start_stream_controller,
+    end_stream_controller,
+    join_stream_controller,
+    leave_stream_controller,
+    list_live_streams_controller,
+    list_owned_streams_controller,
 )
 
 from schemas import StreamCreate, LiveStreamSummary
@@ -22,7 +21,7 @@ router = APIRouter(prefix="/stream", tags=["stream"])
 
 @router.get("/live", response_model=list[LiveStreamSummary])
 def live_streams(session: Session = Depends(get_session)):
-    return list_live_streams(session)
+    return list_live_streams_controller(session)
 
 
 @router.get("/owned", response_model=list[LiveStreamSummary])
@@ -30,7 +29,7 @@ def owned_streams(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
 ):
-    return list_owned_streams(session, user.id)
+    return list_owned_streams_controller(session, user.id)
 
 
 @router.get("/{stream_id}")
@@ -43,26 +42,10 @@ def get(
     if not stream:
         raise HTTPException(status_code=404, detail="Not found")
 
-    return stream
-
-@router.get("/{stream_id}/viewers")
-def total_viewers(
-    stream_id: str,
-    session: Session = Depends(get_session),
-    user=Depends(get_current_user),
-):
-    stream = get_stream(session, stream_id)
-
-    if not stream:
-        raise HTTPException(status_code=404, detail="Stream not found")
-
-    if str(stream.broadcaster_id) != str(user.id):
-        raise HTTPException(status_code=403, detail="Not allowed")
-
     return {
-        "stream_id": stream_id,
-        "viewer_count": get_unique_viewer_count(session, stream_id),
+        "stream": stream,
     }
+
 
 @router.post("/create")
 def create(
@@ -70,7 +53,7 @@ def create(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
 ):
-    return create_stream(session, user.id, payload)
+    return create_stream_controller(session, user.id, payload)
 
 
 @router.post("/start/{stream_id}")
@@ -79,7 +62,7 @@ def start(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
 ):
-    stream = start_stream(session, stream_id, user.id)
+    stream = start_stream_controller(session, stream_id, user.id)
 
     if not stream:
         raise HTTPException(status_code=403, detail="Not allowed")
@@ -93,7 +76,7 @@ def end(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
 ):
-    stream = end_stream(session, stream_id, user.id)
+    stream = end_stream_controller(session, stream_id, user.id)
 
     if not stream:
         raise HTTPException(status_code=403, detail="Not allowed")
@@ -118,7 +101,7 @@ def join(
             detail="Broadcaster cannot join own stream as viewer",
         )
 
-    viewer = join_stream(session, stream_id, user.id)
+    viewer = join_stream_controller(session, stream_id, user.id)
 
     if not viewer:
         raise HTTPException(status_code=400, detail="Stream not live")
@@ -132,7 +115,7 @@ def leave(
     session: Session = Depends(get_session),
     user=Depends(get_current_user),
 ):
-    viewer = leave_stream(session, stream_id, user.id)
+    viewer = leave_stream_controller(session, stream_id, user.id)
 
     if not viewer:
         raise HTTPException(status_code=400, detail="Not in stream")
