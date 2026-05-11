@@ -15,8 +15,9 @@ from routes.stream import router as stream_router
 from routes.stream_ticket import router as sfu_ticket_router
 from routes.stream_server import router as sfu_internal_router
 from routes.stream_control import router as stream_control_router
+from routes.transaction import router as transaction_router
 from services.stream_cleanup import stream_cleanup_loop
-
+from routes.stripe_payment import router as stripe_payment_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,6 +59,8 @@ app.include_router(stream_router)
 app.include_router(sfu_ticket_router)
 app.include_router(sfu_internal_router)
 app.include_router(stream_control_router)
+app.include_router(transaction_router)
+app.include_router(stripe_payment_router)
 
 
 @app.get("/")

@@ -61,9 +61,12 @@ class SignalingServer:
             user_id = str(payload["sub"])
             username = payload.get("username") or "Unknown"
 
+            access_mode = payload.get("access_mode", "free")
+            preview_seconds = int(payload.get("preview_seconds", 0) or 0)
+
             room = self.get_or_create_room(room_id)
 
-            if room.is_user_blocked(user_id):
+            if role == PeerRole.SUBSCRIBER.value and room.is_user_blocked(user_id):
                 await websocket.send_json(
                     {
                         "type": "error",
@@ -79,6 +82,8 @@ class SignalingServer:
                 websocket=websocket,
                 user_id=user_id,
                 username=username,
+                access_mode=access_mode,
+                preview_seconds=preview_seconds,
             )
 
             await peer.create_peer_connection()
@@ -135,13 +140,21 @@ class SignalingServer:
                         "message": "Joined as subscriber",
                         "peerId": peer.id,
                         "roomId": room_id,
+                        "accessMode": peer.access_mode,
+                        "previewSeconds": peer.preview_seconds,
                     }
                 )
 
                 await room.broadcast_presence()
                 await room.broadcast_stream_state()
 
-                print(f"[Signaling] Subscriber joined room {room_id}")
+                if peer.access_mode == "preview" and peer.preview_seconds > 0:
+                    self.start_preview_timer(peer, room)
+
+                print(
+                    f"[Signaling] Subscriber joined room {room_id} "
+                    f"access={peer.access_mode} preview={peer.preview_seconds}s"
+                )
 
             else:
                 await peer.send_json(
@@ -243,6 +256,10 @@ class SignalingServer:
     async def handle_leave(self, peer, room):
         room.remove_peer(peer.id)
         await peer.close()
+
+        if not room.is_empty():
+            await room.broadcast_presence()
+
         self.remove_room_if_empty(room.room_id)
 
     def setup_publisher_track_handler(self, peer, room):
@@ -290,3 +307,55 @@ class SignalingServer:
                 await heartbeat_publisher(room.room_id)
 
         peer.heartbeat_task = asyncio.create_task(heartbeat_loop())
+
+    def start_preview_timer(self, peer, room):
+        async def preview_loop():
+            try:
+                print(
+                    f"[Payment] Preview timer started:",
+                    f"room={room.room_id}",
+                    f"user={peer.user_id}",
+                    f"seconds={peer.preview_seconds}",
+                )
+
+                await asyncio.sleep(peer.preview_seconds)
+
+                if peer.id not in room.subscribers:
+                    return
+
+                await peer.send_json(
+                    {
+                        "type": "payment-required",
+                        "reason": "preview_expired",
+                        "message": "Preview ended. Please pay to continue watching.",
+                        "streamId": room.room_id,
+                    }
+                )
+
+                await peer.close()
+
+                try:
+                    await peer.websocket.close()
+                except Exception:
+                    pass
+
+                room.remove_peer(peer.id)
+
+                if not room.is_empty():
+                    await room.broadcast_presence()
+
+                self.remove_room_if_empty(room.room_id)
+
+                print(
+                    f"[Payment] Preview expired:",
+                    f"room={room.room_id}",
+                    f"user={peer.user_id}",
+                )
+
+            except asyncio.CancelledError:
+                pass
+
+            except Exception as e:
+                print("[Payment] Preview timer error:", str(e))
+
+        peer.preview_task = asyncio.create_task(preview_loop())

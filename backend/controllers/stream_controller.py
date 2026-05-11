@@ -1,5 +1,5 @@
 from sqlmodel import Session
-
+from sqlalchemy.exc import IntegrityError
 from models import StreamStatus, EventType
 from services.stream_service import (
     get_stream,
@@ -133,12 +133,25 @@ def join_stream_controller(session: Session, stream_id: str, user_id: str):
         event_type=EventType.JOIN,
     )
 
-    session.commit()
-    session.refresh(viewer)
+    try:
+        session.commit()
+        session.refresh(viewer)
+        return viewer
 
-    return viewer
+    except IntegrityError:
+        session.rollback()
 
+        existing = get_active_viewer(
+            session=session,
+            user_id=user_id,
+            stream_id=stream.id,
+        )
 
+        if existing:
+            return existing
+
+        raise
+    
 def leave_stream_controller(session: Session, stream_id: str, user_id: str):
     stream = get_stream(session, stream_id)
 

@@ -16,6 +16,7 @@ class SignalType(str, Enum):
     PRESENCE = "presence"
     STREAM_STATE = "stream-state"
     KICKED = "kicked"
+    PAYMENT_REQUIRED = "payment-required"
 
 
 class PeerRole(str, Enum):

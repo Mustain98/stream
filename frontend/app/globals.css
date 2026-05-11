@@ -569,3 +569,29 @@ h3 {
   background: rgba(255, 235, 235, 0.95);
   border-color: rgba(220, 38, 38, 0.35);
 }
+
+
+.payment-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(16, 21, 34, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.payment-card {
+  width: min(420px, 100%);
+  border-radius: 24px;
+  padding: 1.25rem;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 24px 80px rgba(16, 21, 34, 0.22);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.blurred-video {
+  filter: blur(12px);
+}

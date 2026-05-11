@@ -10,14 +10,25 @@ type Options = {
   streamId: string;
   enabled: boolean;
   videoRef: RefObject<HTMLVideoElement | null>;
+  onPaymentRequired?: () => void;
 };
 
-export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
+export function useSfuViewer({
+  token,
+  streamId,
+  enabled,
+  videoRef,
+  onPaymentRequired,
+}: Options) {
   const socketRef = useRef<WebSocket | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+
   const joinedRef = useRef(false);
   const connectingRef = useRef(false);
+  const isLeavingRef = useRef(false);
+
+  const onPaymentRequiredRef = useRef(onPaymentRequired);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -26,12 +37,24 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
   const [status, setStatus] = useState("Not connected.");
   const [error, setError] = useState<string | null>(null);
 
-  const disconnect = useCallback(() => {
-    socketRef.current?.close();
-    socketRef.current = null;
+  useEffect(() => {
+    onPaymentRequiredRef.current = onPaymentRequired;
+  }, [onPaymentRequired]);
 
-    peerRef.current?.close();
+  const closeLocalConnection = useCallback(() => {
+    const socket = socketRef.current;
+    const peer = peerRef.current;
+
+    socketRef.current = null;
     peerRef.current = null;
+
+    if (socket && socket.readyState !== WebSocket.CLOSED) {
+      socket.close();
+    }
+
+    if (peer) {
+      peer.close();
+    }
 
     remoteStreamRef.current?.getTracks().forEach((track) => {
       track.stop();
@@ -43,18 +66,37 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
       videoRef.current.srcObject = null;
     }
 
-    if (token && joinedRef.current) {
-      void api.leaveStream(token, streamId).catch(() => undefined);
-    }
-
-    joinedRef.current = false;
     connectingRef.current = false;
 
     setIsConnected(false);
     setIsPaused(false);
     setViewerCount(0);
     setViewers([]);
-  }, [streamId, token, videoRef]);
+  }, [videoRef]);
+
+  const disconnect = useCallback(
+    async (callLeave = true) => {
+      if (isLeavingRef.current) {
+        return;
+      }
+
+      isLeavingRef.current = true;
+
+      const wasJoined = joinedRef.current;
+
+      closeLocalConnection();
+
+      if (callLeave && token && wasJoined) {
+        await api.leaveStream(token, streamId).catch(() => undefined);
+      }
+
+      joinedRef.current = false;
+      isLeavingRef.current = false;
+
+      setStatus("Not connected.");
+    },
+    [closeLocalConnection, streamId, token]
+  );
 
   const createPeerConnection = useCallback(() => {
     const peer = new RTCPeerConnection({
@@ -84,7 +126,9 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
     };
 
     peer.onicecandidate = (event) => {
-      if (socketRef.current?.readyState !== WebSocket.OPEN) return;
+      if (socketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
+      }
 
       socketRef.current.send(
         JSON.stringify({
@@ -118,7 +162,9 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
     const peer = peerRef.current;
     const socket = socketRef.current;
 
-    if (!peer || !socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!peer || !socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
@@ -134,12 +180,19 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
   }, []);
 
   const connect = useCallback(async () => {
-    if (!token || connectingRef.current || socketRef.current) return;
+    if (!token) {
+      return;
+    }
+
+    if (connectingRef.current || socketRef.current || peerRef.current || joinedRef.current) {
+      return;
+    }
 
     connectingRef.current = true;
 
     try {
       setError(null);
+      setStatus("Joining stream...");
 
       await api.joinStream(token, streamId);
       joinedRef.current = true;
@@ -148,6 +201,7 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
 
       const ticket = await api.getSfuTicket(token, streamId);
       const socket = new WebSocket(ticket.sfuUrl);
+
       socketRef.current = socket;
 
       socket.onopen = async () => {
@@ -173,7 +227,11 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
             })
           );
 
-          setStatus("Waiting for video...");
+          if (ticket.accessMode === "preview") {
+            setStatus(`Preview started. You have ${ticket.previewSeconds ?? 0} seconds.`);
+          } else {
+            setStatus("Waiting for video...");
+          }
         } catch (openError) {
           const message =
             openError instanceof Error ? openError.message : "Failed to connect stream";
@@ -213,13 +271,21 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
           setStatus(paused ? "Stream paused." : "Watching live.");
         }
 
-        if (message.type === "error") {
-          setError(message.message || "Stream server error");
+        if (message.type === "payment-required") {
+          setError(message.message || "Preview ended. Please pay to continue watching.");
+          onPaymentRequiredRef.current?.();
+
+          await disconnect(true);
         }
 
         if (message.type === "kicked") {
           setError(message.message || "You were removed from this live stream.");
-          disconnect();
+
+          await disconnect(true);
+        }
+
+        if (message.type === "error") {
+          setError(message.message || "Stream server error");
         }
       };
 
@@ -228,7 +294,10 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
       };
 
       socket.onclose = () => {
-        socketRef.current = null;
+        if (socketRef.current === socket) {
+          socketRef.current = null;
+        }
+
         connectingRef.current = false;
         setIsConnected(false);
         setIsPaused(false);
@@ -238,21 +307,37 @@ export function useSfuViewer({ token, streamId, enabled, videoRef }: Options) {
         connectError instanceof Error ? connectError.message : "Unable to join stream";
 
       setError(message);
-      disconnect();
+      await disconnect(true);
     } finally {
       connectingRef.current = false;
     }
-  }, [token, streamId, createPeerConnection, disconnect, isPaused, renegotiate]);
+  }, [
+    token,
+    streamId,
+    createPeerConnection,
+    disconnect,
+    isPaused,
+    renegotiate,
+  ]);
 
   useEffect(() => {
-    if (enabled) {
-      void connect();
+    if (!enabled) {
+      void disconnect(true);
+      return;
     }
 
-    return () => {
-      disconnect();
-    };
+    if (connectingRef.current || socketRef.current || peerRef.current || joinedRef.current) {
+      return;
+    }
+
+    void connect();
   }, [enabled, connect, disconnect]);
+
+  useEffect(() => {
+    return () => {
+      void disconnect(true);
+    };
+  }, [disconnect]);
 
   return {
     isConnected,

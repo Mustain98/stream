@@ -47,6 +47,8 @@ export type SfuTicketResponse = {
   streamId: string;
   roomId: string;
   role: "publisher" | "subscriber";
+  accessMode?: "free" | "paid" | "preview";
+  previewSeconds?: number;
 };
 
 export type ApiError = {
@@ -74,6 +76,7 @@ export type SfuMessage = {
     | "presence"
     | "stream-state"
     | "kicked"
+    | "payment-required"
     | string;
 
   sdp?: string;
@@ -81,6 +84,7 @@ export type SfuMessage = {
   message?: string;
   reason?: string;
   roomId?: string;
+  streamId?: string;
   viewerCount?: number;
   viewers?: ViewerInfo[];
   state?: StreamState;
@@ -106,4 +110,30 @@ export type BlockViewerResponse = {
   user_id: string;
   reason?: string | null;
   sfu?: unknown;
+};
+
+export type StreamAccessResponse = {
+  stream_id: string;
+  access_type: "free" | "paid";
+  price_amount: number;
+  currency: string;
+  free_preview_seconds: number;
+  has_paid: boolean;
+  can_watch: boolean;
+  access_mode: "free" | "preview" | "paid" | "payment_required";
+};
+
+export type StreamAccessSettingsPayload = {
+  access_type: "free" | "paid";
+  price_amount: number;
+  currency: string;
+  free_preview_seconds: number;
+};
+
+export type CheckoutResponse = {
+  checkout_url?: string;
+  checkout_session_id?: string;
+  transaction_id?: string;
+  status?: string;
+  stream_id?: string;
 };

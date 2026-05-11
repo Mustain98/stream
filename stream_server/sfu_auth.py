@@ -1,5 +1,3 @@
-# SFU_server/sfu_auth.py
-
 import os
 from typing import Optional
 
@@ -16,8 +14,16 @@ def verify_sfu_ticket(token: Optional[str]):
     """
     Verifies the signed SFU ticket created by the main backend.
 
-    Returns payload if valid.
-    Returns None if invalid/expired.
+    Expected required payload:
+      type = sfu_ticket
+      sub
+      stream_id
+      username
+      role
+
+    Optional access payload:
+      access_mode = free | paid | preview
+      preview_seconds = int
     """
 
     if not token:
@@ -34,12 +40,30 @@ def verify_sfu_ticket(token: Optional[str]):
 
         if not payload.get("stream_id"):
             return None
-        
+
         if not payload.get("username"):
             return None
 
         if payload.get("role") not in ["publisher", "subscriber"]:
             return None
+
+        access_mode = payload.get("access_mode", "free")
+
+        if access_mode not in ["free", "paid", "preview"]:
+            return None
+
+        preview_seconds = payload.get("preview_seconds", 0)
+
+        try:
+            preview_seconds = int(preview_seconds or 0)
+        except Exception:
+            return None
+
+        if preview_seconds < 0:
+            return None
+
+        payload["access_mode"] = access_mode
+        payload["preview_seconds"] = preview_seconds
 
         return payload
 

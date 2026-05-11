@@ -2,7 +2,10 @@ import type {
   ApiError,
   BlockedUsersResponse,
   BlockViewerResponse,
+  CheckoutResponse,
   SfuTicketResponse,
+  StreamAccessResponse,
+  StreamAccessSettingsPayload,
   StreamDetailsResponse,
   StreamSummary,
   TokenResponse,
@@ -142,22 +145,45 @@ export const api = {
       token,
     }),
 
-    blockViewer: (token: string, streamId: string, userId: string, reason = "blocked") =>
-  request<BlockViewerResponse>(`/stream/${streamId}/block/${userId}`, {
-    method: "POST",
-    token,
-    body: { reason },
-  }),
+  blockViewer: (token: string, streamId: string, userId: string, reason = "blocked") =>
+    request<BlockViewerResponse>(`/stream/${streamId}/block/${userId}`, {
+      method: "POST",
+      token,
+      body: { reason },
+    }),
 
-unblockViewer: (token: string, streamId: string, userId: string) =>
-  request<BlockViewerResponse>(`/stream/${streamId}/block/${userId}`, {
-    method: "DELETE",
-    token,
-  }),
+  unblockViewer: (token: string, streamId: string, userId: string) =>
+    request<BlockViewerResponse>(`/stream/${streamId}/block/${userId}`, {
+      method: "DELETE",
+      token,
+    }),
 
-getBlockedUsers: (token: string, streamId: string) =>
-  request<BlockedUsersResponse>(`/stream/${streamId}/blocked-users`, {
-    token,
-    cache: "no-store",
-  }),
+  getBlockedUsers: (token: string, streamId: string) =>
+    request<BlockedUsersResponse>(`/stream/${streamId}/blocked-users`, {
+      token,
+      cache: "no-store",
+    }),
+
+  getStreamAccess: (token: string, streamId: string) =>
+    request<StreamAccessResponse>(`/stream/${streamId}/access`, {
+      token,
+      cache: "no-store",
+    }),
+
+  updateStreamAccessSettings: (
+    token: string,
+    streamId: string,
+    payload: StreamAccessSettingsPayload
+  ) =>
+    request<StreamAccessResponse>(`/stream/${streamId}/access-settings`, {
+      method: "PATCH",
+      token,
+      body: payload,
+    }),
+
+  createCheckoutSession: (token: string, streamId: string) =>
+    request<CheckoutResponse>(`/stream/${streamId}/checkout`, {
+      method: "POST",
+      token,
+    }),
 };

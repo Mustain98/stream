@@ -17,9 +17,20 @@ def create_sfu_ticket(
     stream_id: str,
     role: str,
     username: Optional[str] = None,
+    access_mode: str = "free",
+    preview_seconds: int = 0,
 ):
     if not SECRET_KEY:
         raise RuntimeError("SECRET_KEY is not configured")
+
+    if role not in ["publisher", "subscriber"]:
+        raise ValueError("Invalid SFU role")
+
+    if access_mode not in ["free", "paid", "preview"]:
+        raise ValueError("Invalid access mode")
+
+    if preview_seconds < 0:
+        raise ValueError("preview_seconds cannot be negative")
 
     expire = datetime.utcnow() + timedelta(seconds=SFU_TICKET_EXPIRE_SECONDS)
 
@@ -29,6 +40,8 @@ def create_sfu_ticket(
         "role": role,
         "type": "sfu_ticket",
         "username": username,
+        "access_mode": access_mode,
+        "preview_seconds": int(preview_seconds),
         "exp": expire,
     }
 
@@ -44,6 +57,33 @@ def verify_sfu_ticket(token: str):
 
         if payload.get("type") != "sfu_ticket":
             return None
+
+        if not payload.get("sub"):
+            return None
+
+        if not payload.get("stream_id"):
+            return None
+
+        if payload.get("role") not in ["publisher", "subscriber"]:
+            return None
+
+        access_mode = payload.get("access_mode", "free")
+
+        if access_mode not in ["free", "paid", "preview"]:
+            return None
+
+        preview_seconds = payload.get("preview_seconds", 0)
+
+        try:
+            preview_seconds = int(preview_seconds or 0)
+        except Exception:
+            return None
+
+        if preview_seconds < 0:
+            return None
+
+        payload["access_mode"] = access_mode
+        payload["preview_seconds"] = preview_seconds
 
         return payload
 

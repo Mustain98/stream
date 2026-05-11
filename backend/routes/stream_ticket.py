@@ -35,4 +35,10 @@ def get_sfu_ticket(
     if error == "stream_not_live":
         raise HTTPException(status_code=400, detail="Stream is not live")
 
+    if error == "payment_required":
+        raise HTTPException(
+            status_code=402,
+            detail="Payment required to watch this stream",
+        )
+
     return response

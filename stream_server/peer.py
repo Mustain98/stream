@@ -1,10 +1,19 @@
 import uuid
-
+import asyncio
 from aiortc import RTCPeerConnection
 
 
 class Peer:
-    def __init__(self, role, room_id, websocket, user_id=None, username=None):
+    def __init__(self,
+        role,
+        room_id, 
+        websocket, 
+        user_id=None, 
+        username=None, 
+        access_mode="free",
+        preview_seconds=0
+        ):
+
         self.id = str(uuid.uuid4())
         self.role = role
         self.room_id = room_id
@@ -13,9 +22,13 @@ class Peer:
         self.user_id = user_id
         self.username = username or "Unknown"
 
+        self.access_mode = access_mode or "free"
+        self.preview_seconds = int(preview_seconds or 0)
+
         self.pc = None
         self.attached_kinds: set[str] = set()
         self.heartbeat_task=None
+        self.preview_task=None
 
     async def create_peer_connection(self):
         pc = RTCPeerConnection()
@@ -42,9 +55,15 @@ class Peer:
         await self.websocket.send_json(message)
 
     async def close(self):
-        if self.heartbeat_task:
+        current_task = asyncio.current_task()
+
+        if self.heartbeat_task and self.heartbeat_task is not current_task:
             self.heartbeat_task.cancel()
             self.heartbeat_task = None
+
+        if self.preview_task and self.preview_task is not current_task:
+            self.preview_task.cancel()
+            self.preview_task = None
 
         pc = self.pc
 

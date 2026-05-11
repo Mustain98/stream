@@ -11,6 +11,7 @@ import { useSession } from "../../../components/session-provider";
 import { api } from "../../../lib/api";
 import { isEndedStatus, isLiveStatus } from "../../../lib/stream-utils";
 import { useSfuPublisher } from "../../../lib/use-sfu-publisher";
+import { useStreamAccess } from "../../../lib/use-stream-access";
 import { useStreamModeration } from "../../../lib/use-stream-moderation";
 import { useStreamRoom } from "../../../lib/use-stream-room";
 
@@ -44,6 +45,11 @@ function StudioRoomContent() {
     streamId,
   });
 
+  const streamAccess = useStreamAccess({
+    token,
+    streamId,
+  });
+
   const stream = room.stream;
   const isOwner = stream?.broadcaster_id === user?.id;
 
@@ -56,7 +62,11 @@ function StudioRoomContent() {
   const viewers = isLive ? publisher.viewers : [];
 
   const error =
-    localError || room.error || publisher.error || moderation.moderationError;
+    localError ||
+    room.error ||
+    publisher.error ||
+    moderation.moderationError ||
+    streamAccess.accessError;
 
   const status = useMemo(() => {
     if (isEnded) {
@@ -133,6 +143,14 @@ function StudioRoomContent() {
 
     void moderation.loadBlockedUsers();
   }, [stream?.id, isOwner, token, moderation.loadBlockedUsers]);
+
+  useEffect(() => {
+    if (!stream || !isOwner || !token) {
+      return;
+    }
+
+    void streamAccess.loadAccess();
+  }, [stream?.id, isOwner, token, streamAccess.loadAccess]);
 
   useEffect(() => {
     if (!stream || !isOwner || !isLive || isEnded) {
@@ -372,10 +390,13 @@ function StudioRoomContent() {
             viewerCount={viewerCount}
             blockedUsers={moderation.blockedUsers}
             isLoadingBlockedUsers={moderation.isLoadingBlockedUsers}
+            access={streamAccess.access}
+            isLoadingAccess={streamAccess.isLoadingAccess}
             onGoLive={goLive}
             onEndLive={endLive}
             onTryAgain={tryAgain}
             onUnblockViewer={moderation.unblockViewer}
+            onSaveAccess={streamAccess.updateAccess}
           />
         </div>
       ) : null}

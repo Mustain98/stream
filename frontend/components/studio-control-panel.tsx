@@ -1,7 +1,13 @@
 import Link from "next/link";
 
 import { BlockedUsersPanel } from "./blocked-users-panel";
-import type { BlockedUser, StreamRecord } from "../lib/types";
+import { StreamAccessSettingsPanel } from "./stream-access-settings-panel";
+import type {
+  BlockedUser,
+  StreamAccessResponse,
+  StreamAccessSettingsPayload,
+  StreamRecord,
+} from "../lib/types";
 
 type StudioControlsPanelProps = {
   stream: StreamRecord;
@@ -25,10 +31,14 @@ type StudioControlsPanelProps = {
   blockedUsers: BlockedUser[];
   isLoadingBlockedUsers: boolean;
 
+  access: StreamAccessResponse | null;
+  isLoadingAccess: boolean;
+
   onGoLive: () => void;
   onEndLive: () => void;
   onTryAgain: () => void;
   onUnblockViewer: (userId: string) => void;
+  onSaveAccess: (payload: StreamAccessSettingsPayload) => Promise<void>;
 };
 
 function formatDateTime(value: string | null) {
@@ -55,10 +65,13 @@ export function StudioControlsPanel({
   viewerCount,
   blockedUsers,
   isLoadingBlockedUsers,
+  access,
+  isLoadingAccess,
   onGoLive,
   onEndLive,
   onTryAgain,
   onUnblockViewer,
+  onSaveAccess,
 }: StudioControlsPanelProps) {
   return (
     <div className="panel stack-md">
@@ -161,6 +174,12 @@ export function StudioControlsPanel({
           <strong>{stream.id}</strong>
         </div>
       </div>
+
+      <StreamAccessSettingsPanel
+        access={access}
+        isLoading={isLoadingAccess}
+        onSave={onSaveAccess}
+      />
 
       <BlockedUsersPanel
         blockedUsers={blockedUsers}
