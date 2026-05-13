@@ -35,3 +35,4 @@ frontend/pnpm-debug.log*
 PROJECT_GUIDE.md
 features.md
 docker-compose.yml
+docker-compose.stripe.yml

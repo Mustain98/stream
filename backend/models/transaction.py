@@ -3,7 +3,7 @@ from typing import Optional
 import enum
 import uuid
 
-from sqlalchemy import Index, text
+from sqlalchemy import Index, text, UniqueConstraint
 from sqlmodel import SQLModel, Field
 
 
@@ -14,10 +14,13 @@ class StreamAccessType(str, enum.Enum):
 
 class TransactionStatus(str, enum.Enum):
     PENDING = "pending"
+    CHECKOUT_CREATED = "checkout_created"
     PAID = "paid"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    REFUND_PENDING = "refund_pending"
     REFUNDED = "refunded"
+    REFUND_FAILED = "refund_failed"
 
 
 class StreamAccessSetting(SQLModel, table=True):
@@ -49,21 +52,65 @@ class StreamTransaction(SQLModel, table=True):
             unique=True,
             postgresql_where=text("status = 'PAID'"),
         ),
+        UniqueConstraint(
+            "provider_session_id",
+            name="uq_stream_transactions_provider_session_id",
+        ),
     )
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
 
     stream_id: str = Field(foreign_key="streams.id", index=True)
+
+    # Viewer who pays
     user_id: str = Field(foreign_key="users.id", index=True)
+
+    # Broadcaster who should receive money
+    broadcaster_id: str = Field(foreign_key="users.id", index=True)
 
     amount: int
     currency: str = Field(default="usd")
 
+    platform_fee_amount: int = Field(default=0)
+    broadcaster_amount: int = Field(default=0)
+
     status: TransactionStatus = Field(default=TransactionStatus.PENDING)
 
     provider: str = Field(default="manual")
+
+    # Stripe Checkout Session id: cs_test_...
     provider_session_id: Optional[str] = Field(default=None, index=True)
+
+    # Stripe PaymentIntent id: pi_...
     provider_payment_id: Optional[str] = Field(default=None, index=True)
 
+    # Stripe refund id: re_...
+    provider_refund_id: Optional[str] = Field(default=None, index=True)
+
+    # Stable key used for safe Stripe retry
+    provider_idempotency_key: Optional[str] = Field(default=None, index=True, unique=True)
+
+    # Stripe connected account destination: acct_...
+    stripe_transfer_destination: Optional[str] = Field(default=None, index=True)
+
+    failure_reason: Optional[str] = None
+    refund_reason: Optional[str] = None
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    checkout_created_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
+    refunded_at: Optional[datetime] = None
+
+
+class StripeWebhookEvent(SQLModel, table=True):
+    __tablename__ = "stripe_webhook_events"
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+
+    # Stripe event id: evt_...
+    stripe_event_id: str = Field(index=True, unique=True)
+
+    event_type: str = Field(index=True)
+    object_id: Optional[str] = Field(default=None, index=True)
+
+    processed_at: datetime = Field(default_factory=datetime.utcnow)

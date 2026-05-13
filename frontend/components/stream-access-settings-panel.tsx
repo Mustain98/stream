@@ -1,21 +1,27 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import type {
   StreamAccessResponse,
   StreamAccessSettingsPayload,
+  StripeConnectStatus,
 } from "../lib/types";
 
 type StreamAccessSettingsPanelProps = {
   access: StreamAccessResponse | null;
   isLoading: boolean;
+  stripeStatus: StripeConnectStatus | null;
+  isLoadingStripeStatus: boolean;
   onSave: (payload: StreamAccessSettingsPayload) => Promise<void>;
 };
 
 export function StreamAccessSettingsPanel({
   access,
   isLoading,
+  stripeStatus,
+  isLoadingStripeStatus,
   onSave,
 }: StreamAccessSettingsPanelProps) {
   const [accessType, setAccessType] = useState<"free" | "paid">("free");
@@ -35,8 +41,18 @@ export function StreamAccessSettingsPanel({
     setFreePreviewSeconds(access.free_preview_seconds);
   }, [access]);
 
+  const stripeReady = Boolean(stripeStatus?.onboarding_completed);
+
+  const paidBlockedByStripe = useMemo(() => {
+    return accessType === "paid" && !stripeReady;
+  }, [accessType, stripeReady]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (paidBlockedByStripe) {
+      return;
+    }
 
     setIsSaving(true);
 
@@ -78,6 +94,25 @@ export function StreamAccessSettingsPanel({
 
           {accessType === "paid" ? (
             <>
+              {isLoadingStripeStatus ? (
+                <p className="muted">Checking Stripe status...</p>
+              ) : null}
+
+              {!isLoadingStripeStatus && !stripeReady ? (
+                <div className="error-surface panel stack-sm">
+                  <p className="eyebrow">Stripe required</p>
+                  <h3>Connect Stripe before making this stream paid.</h3>
+                  <p className="muted">
+                    Only broadcasters who want paid streams need Stripe. Free streams do
+                    not require Stripe setup.
+                  </p>
+
+                  <Link className="primary-button compact" href="/dashboard/stripe">
+                    Manage Stripe
+                  </Link>
+                </div>
+              ) : null}
+
               <label className="field">
                 <span>Price amount</span>
                 <input
@@ -113,11 +148,16 @@ export function StreamAccessSettingsPanel({
             </>
           ) : (
             <p className="muted">
-              Viewers can watch the full stream without payment.
+              Viewers can watch the full stream without payment. Stripe is not required
+              for free streams.
             </p>
           )}
 
-          <button className="primary-button" disabled={isSaving} type="submit">
+          <button
+            className="primary-button"
+            disabled={isSaving || paidBlockedByStripe}
+            type="submit"
+          >
             {isSaving ? "Saving..." : "Save access settings"}
           </button>
         </form>

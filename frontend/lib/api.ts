@@ -8,9 +8,12 @@ import type {
   StreamAccessSettingsPayload,
   StreamDetailsResponse,
   StreamSummary,
+  StripeConnectStatus,
+  StripeOnboardingResponse,
   TokenResponse,
   User,
   ViewerCountResponse,
+  UserUpdatePayload
 } from "./types";
 
 export const API_BASE_URL =
@@ -186,4 +189,22 @@ export const api = {
       method: "POST",
       token,
     }),
+
+  getStripeConnectStatus: (token: string) =>
+    request<StripeConnectStatus>("/stripe/connect/status", {
+      token,
+      cache: "no-store",
+    }),
+
+  createStripeOnboarding: (token: string) =>
+    request<StripeOnboardingResponse>("/stripe/connect/onboard", {
+      method: "POST",
+      token,
+    }),
+  updateMe: (token: string, payload: UserUpdatePayload) =>
+  request<User>("/auth/me", {
+    method: "PATCH",
+    token,
+    body: payload,
+  }),
 };

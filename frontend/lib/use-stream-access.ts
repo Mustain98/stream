@@ -20,7 +20,7 @@ export function useStreamAccess({ token, streamId }: UseStreamAccessOptions) {
 
   const loadAccess = useCallback(async () => {
     if (!token) {
-      return;
+      return null;
     }
 
     try {
@@ -29,11 +29,14 @@ export function useStreamAccess({ token, streamId }: UseStreamAccessOptions) {
 
       const response = await api.getStreamAccess(token, streamId);
       setAccess(response);
+
+      return response;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to load stream access";
 
       setAccessError(message);
+      throw error;
     } finally {
       setIsLoadingAccess(false);
     }

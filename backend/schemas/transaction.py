@@ -29,7 +29,10 @@ class TransactionResponse(SQLModel):
     id: str
     stream_id: str
     user_id: str
+    broadcaster_id: str
     amount: int
     currency: str
+    platform_fee_amount: int
+    broadcaster_amount: int
     status: str
     provider: str

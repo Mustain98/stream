@@ -7,11 +7,16 @@ from sqlmodel import SQLModel
 class UserCreate(SQLModel):
     username: str
     password: str
+    email: Optional[str] = None
 
 
 class UserLogin(SQLModel):
     username: str
     password: str
+
+
+class UserUpdate(SQLModel):
+    email: Optional[str] = None
 
 
 class Token(SQLModel):

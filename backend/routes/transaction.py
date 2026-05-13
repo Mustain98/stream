@@ -60,6 +60,18 @@ def update_stream_access_settings(
     if error == "invalid_preview":
         raise HTTPException(status_code=400, detail="Preview seconds cannot be negative")
 
+    if error == "stripe_not_connected":
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Stripe before making this stream paid",
+        )
+
+    if error == "stripe_onboarding_incomplete":
+        raise HTTPException(
+            status_code=400,
+            detail="Complete Stripe onboarding before making this stream paid",
+        )
+
     return response
 
 

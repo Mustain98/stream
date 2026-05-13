@@ -16,8 +16,11 @@ from routes.stream_ticket import router as sfu_ticket_router
 from routes.stream_server import router as sfu_internal_router
 from routes.stream_control import router as stream_control_router
 from routes.transaction import router as transaction_router
-from services.stream_cleanup import stream_cleanup_loop
 from routes.stripe_payment import router as stripe_payment_router
+from routes.stripe_connect import router as stripe_connect_router
+
+from services.stream_cleanup import stream_cleanup_loop
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,13 +44,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+frontend_origin = os.getenv("FRONTEND_ORIGIN")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         frontend_origin,
-        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -61,6 +63,7 @@ app.include_router(sfu_internal_router)
 app.include_router(stream_control_router)
 app.include_router(transaction_router)
 app.include_router(stripe_payment_router)
+app.include_router(stripe_connect_router)
 
 
 @app.get("/")

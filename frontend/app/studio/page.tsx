@@ -9,6 +9,7 @@ import { RequireAuth } from "../../components/require-auth";
 import { useSession } from "../../components/session-provider";
 import { api } from "../../lib/api";
 import type { StreamSummary } from "../../lib/types";
+import { useStripeConnect } from "../../lib/use-stripe-connect";
 
 export default function StudioPage() {
   return (
@@ -25,8 +26,13 @@ function StudioContent() {
   const [isLoadingOwned, setIsLoadingOwned] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const router = useRouter();
   const { token, user } = useSession();
+
+  const stripeConnect = useStripeConnect({
+    token,
+  });
 
   useEffect(() => {
     if (!token) {
@@ -47,7 +53,8 @@ function StudioContent() {
     };
 
     void loadOwnedStreams();
-  }, [token]);
+    void stripeConnect.loadStatus();
+  }, [token, stripeConnect.loadStatus]);
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -81,6 +88,8 @@ function StudioContent() {
     }
   };
 
+  const stripeReady = Boolean(stripeConnect.status?.onboarding_completed);
+
   return (
     <section className="stack-xl">
       <div className="hero-panel">
@@ -95,6 +104,24 @@ function StudioContent() {
         <div className="stat-block">
           <span>Signed in as</span>
           <strong>{user?.username}</strong>
+        </div>
+      </div>
+
+      <div className="panel stack-md">
+        <div>
+          <p className="eyebrow">Payments</p>
+          <h2>{stripeReady ? "Stripe ready for paid streams" : "Want paid streams?"}</h2>
+        </div>
+
+        <p className="muted">
+          Stripe is only required if you want to make a stream paid. Free streams do not need
+          Stripe setup.
+        </p>
+
+        <div className="hero-actions">
+          <Link className={stripeReady ? "ghost-button" : "primary-button"} href="/dashboard/stripe">
+            {stripeReady ? "Manage Stripe" : "Connect Stripe"}
+          </Link>
         </div>
       </div>
 

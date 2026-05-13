@@ -33,6 +33,7 @@ function WatchContent() {
   const [paymentRequired, setPaymentRequired] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
 
   const room = useStreamRoom(streamId, token);
   const streamAccess = useStreamAccess({
@@ -57,9 +58,11 @@ function WatchContent() {
       streamAccess.access.can_watch &&
       !shouldShowPayment
   );
+
   const handlePaymentRequired = useCallback(() => {
-  setPaymentRequired(true);
+    setPaymentRequired(true);
   }, []);
+
   const viewer = useSfuViewer({
     token,
     streamId,
@@ -73,6 +76,10 @@ function WatchContent() {
   const error = room.error || viewer.error || streamAccess.accessError || paymentError;
 
   const status = (() => {
+    if (paymentMessage) {
+      return paymentMessage;
+    }
+
     if (!isLive) {
       return "This stream is not live right now.";
     }
@@ -103,11 +110,51 @@ function WatchContent() {
       return;
     }
 
-    setPaymentRequired(false);
-    setPaymentError(null);
+    let cancelled = false;
 
-    void streamAccess.loadAccess();
-  }, [token, searchParams, streamAccess.loadAccess]);
+    const confirmPayment = async () => {
+      setPaymentRequired(false);
+      setPaymentError(null);
+      setPaymentMessage("Confirming payment...");
+
+      for (let attempt = 1; attempt <= 10; attempt += 1) {
+        if (cancelled) {
+          return;
+        }
+
+        try {
+          await streamAccess.loadAccess();
+
+          const latestAccess = streamAccess.access;
+
+          if (latestAccess?.access_mode === "paid" || latestAccess?.has_paid) {
+            setPaymentRequired(false);
+            setPaymentMessage(null);
+            return;
+          }
+        } catch {
+          // streamAccess hook already stores error.
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
+      if (!cancelled) {
+        setPaymentMessage(
+          "Payment is still being confirmed. Refresh in a moment if access does not unlock."
+        );
+      }
+    };
+
+    void confirmPayment();
+
+    return () => {
+      cancelled = true;
+    };
+
+    // Intentionally only react to payment success URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, searchParams]);
 
   useEffect(() => {
     if (isOwner) {
@@ -135,6 +182,7 @@ function WatchContent() {
 
     setIsPaying(true);
     setPaymentError(null);
+    setPaymentMessage(null);
 
     try {
       const response = await streamAccess.createCheckout();

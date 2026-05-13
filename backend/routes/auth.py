@@ -10,25 +10,36 @@ from core.security import (
     create_access_token,
     get_current_user,
 )
-from schemas.auth_schema import UserCreate, UserLogin, UserPublic
+from schemas.auth_schema import UserCreate, UserLogin, UserPublic, UserUpdate
 
-router = APIRouter(prefix="/auth",tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-# ---------------- SIGNUP ----------------
 @router.post("/signup")
 def signup(user: UserCreate, session: Session = Depends(get_session)):
-
-    existing = session.exec(
+    existing_username = session.exec(
         select(User).where(User.username == user.username)
     ).first()
 
-    if existing:
+    if existing_username:
         raise HTTPException(status_code=400, detail="User already exists")
+
+    if user.email:
+        email = user.email.strip().lower()
+
+        existing_email = session.exec(
+            select(User).where(User.email == email)
+        ).first()
+
+        if existing_email:
+            raise HTTPException(status_code=400, detail="Email already exists")
+    else:
+        email = None
 
     new_user = User(
         username=user.username,
-        password_hash=hash_password(user.password)
+        email=email,
+        password_hash=hash_password(user.password),
     )
 
     session.add(new_user)
@@ -40,10 +51,8 @@ def signup(user: UserCreate, session: Session = Depends(get_session)):
     return {"access_token": token, "token_type": "bearer"}
 
 
-# ---------------- LOGIN ----------------
 @router.post("/login")
 def login(user: UserLogin, session: Session = Depends(get_session)):
-
     db_user = session.exec(
         select(User).where(User.username == user.username)
     ).first()
@@ -66,4 +75,35 @@ def login(user: UserLogin, session: Session = Depends(get_session)):
 
 @router.get("/me", response_model=UserPublic)
 def me(user: User = Depends(get_current_user)):
+    return user
+
+
+@router.patch("/me", response_model=UserPublic)
+def update_me(
+    payload: UserUpdate,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+
+        if email == "":
+            user.email = None
+        else:
+            existing_email = session.exec(
+                select(User).where(
+                    User.email == email,
+                    User.id != user.id,
+                )
+            ).first()
+
+            if existing_email:
+                raise HTTPException(status_code=400, detail="Email already exists")
+
+            user.email = email
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
     return user

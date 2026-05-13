@@ -2,6 +2,9 @@ from sqlmodel import Session
 
 from models import StreamAccessType
 from services.stream_service import get_stream
+from services.stripe_connect_account_service import (
+    get_stripe_connect_account_by_user_id,
+)
 from services.transaction_service import (
     get_or_create_access_setting,
     update_access_setting,
@@ -71,8 +74,20 @@ def update_stream_access_settings_controller(
     if str(stream.broadcaster_id) != str(broadcaster_id):
         return None, "not_allowed"
 
-    if payload.access_type.lower() == "paid" and payload.price_amount <= 0:
-        return None, "invalid_price"
+    if payload.access_type.lower() == "paid":
+        if payload.price_amount <= 0:
+            return None, "invalid_price"
+
+        connect_account = get_stripe_connect_account_by_user_id(
+            session=session,
+            user_id=str(broadcaster_id),
+        )
+
+        if not connect_account:
+            return None, "stripe_not_connected"
+
+        if not connect_account.onboarding_completed:
+            return None, "stripe_onboarding_incomplete"
 
     if payload.free_preview_seconds < 0:
         return None, "invalid_preview"
@@ -129,9 +144,12 @@ def create_manual_paid_transaction_controller(
         session=session,
         stream_id=stream_id,
         user_id=target_user_id,
+        broadcaster_id=str(stream.broadcaster_id),
         amount=setting.price_amount,
         currency=setting.currency,
         provider="manual",
+        platform_fee_amount=0,
+        broadcaster_amount=setting.price_amount,
     )
 
     mark_transaction_paid(session, transaction)
@@ -143,8 +161,11 @@ def create_manual_paid_transaction_controller(
         "id": transaction.id,
         "stream_id": transaction.stream_id,
         "user_id": transaction.user_id,
+        "broadcaster_id": transaction.broadcaster_id,
         "amount": transaction.amount,
         "currency": transaction.currency,
+        "platform_fee_amount": transaction.platform_fee_amount,
+        "broadcaster_amount": transaction.broadcaster_amount,
         "status": transaction.status.value,
         "provider": transaction.provider,
     }, None

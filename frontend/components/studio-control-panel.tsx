@@ -7,6 +7,7 @@ import type {
   StreamAccessResponse,
   StreamAccessSettingsPayload,
   StreamRecord,
+  StripeConnectStatus,
 } from "../lib/types";
 
 type StudioControlsPanelProps = {
@@ -33,6 +34,9 @@ type StudioControlsPanelProps = {
 
   access: StreamAccessResponse | null;
   isLoadingAccess: boolean;
+
+  stripeStatus: StripeConnectStatus | null;
+  isLoadingStripeStatus: boolean;
 
   onGoLive: () => void;
   onEndLive: () => void;
@@ -67,6 +71,8 @@ export function StudioControlsPanel({
   isLoadingBlockedUsers,
   access,
   isLoadingAccess,
+  stripeStatus,
+  isLoadingStripeStatus,
   onGoLive,
   onEndLive,
   onTryAgain,
@@ -170,6 +176,11 @@ export function StudioControlsPanel({
         )}
 
         <div>
+          <span>Stripe</span>
+          <strong>{stripeStatus?.onboarding_completed ? "ready" : "not ready"}</strong>
+        </div>
+
+        <div>
           <span>Stream ID</span>
           <strong>{stream.id}</strong>
         </div>
@@ -178,6 +189,8 @@ export function StudioControlsPanel({
       <StreamAccessSettingsPanel
         access={access}
         isLoading={isLoadingAccess}
+        stripeStatus={stripeStatus}
+        isLoadingStripeStatus={isLoadingStripeStatus}
         onSave={onSaveAccess}
       />
 

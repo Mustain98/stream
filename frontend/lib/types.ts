@@ -136,4 +136,28 @@ export type CheckoutResponse = {
   transaction_id?: string;
   status?: string;
   stream_id?: string;
+  amount?: number;
+  currency?: string;
+  platform_fee_amount?: number;
+  broadcaster_amount?: number;
+  broadcaster_id?: string;
+};
+
+export type StripeConnectStatus = {
+  connected: boolean;
+  stripe_account_id: string | null;
+  details_submitted: boolean;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  onboarding_completed: boolean;
+};
+
+export type StripeOnboardingResponse = {
+  onboarding_url: string;
+  stripe_account_id: string;
+  onboarding_completed: boolean;
+};
+
+export type UserUpdatePayload = {
+  email?: string | null;
 };
