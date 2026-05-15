@@ -18,6 +18,7 @@ from services.payment_fee_service import (
     calculate_platform_fee,
     calculate_broadcaster_amount,
 )
+from services.earnings_relay_service import relay_stream_earnings_update
 from services.stripe_connect_account_service import (
     get_stripe_connect_account_by_user_id,
 )
@@ -344,6 +345,10 @@ def refund_viewer_for_failed_broadcaster_delivery(
         )
         session.commit()
         session.refresh(transaction)
+        relay_stream_earnings_update(
+            session=session,
+            stream_id=transaction.stream_id,
+        )
 
         return {
             "status": "refunded",
@@ -489,6 +494,10 @@ def finalize_paid_transaction_or_refund(
 
     session.commit()
     session.refresh(transaction)
+    relay_stream_earnings_update(
+        session=session,
+        stream_id=transaction.stream_id,
+    )
 
     print("[Stripe] marked transaction paid:", transaction.id)
 

@@ -2,6 +2,7 @@ from sqlmodel import Session
 
 from models import StreamAccessType
 from services.stream_service import get_stream
+from services.earnings_relay_service import relay_stream_earnings_update
 from services.stripe_connect_account_service import (
     get_stripe_connect_account_by_user_id,
 )
@@ -156,6 +157,10 @@ def create_manual_paid_transaction_controller(
 
     session.commit()
     session.refresh(transaction)
+    relay_stream_earnings_update(
+        session=session,
+        stream_id=stream_id,
+    )
 
     return {
         "id": transaction.id,

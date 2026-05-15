@@ -16,6 +16,7 @@ class UserLogin(SQLModel):
 
 
 class UserUpdate(SQLModel):
+    username: Optional[str] = None
     email: Optional[str] = None
 
 

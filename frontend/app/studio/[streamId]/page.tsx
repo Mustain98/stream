@@ -11,6 +11,7 @@ import { StudioVideoPanel } from "../../../components/studio-video-panel";
 import { useSession } from "../../../components/session-provider";
 import { api } from "../../../lib/api";
 import { isEndedStatus, isLiveStatus } from "../../../lib/stream-utils";
+import { useStreamEarnings } from "../../../lib/use-stream-earnings";
 import { useSfuPublisher } from "../../../lib/use-sfu-publisher";
 import { useStripeConnect } from "../../../lib/use-stripe-connect";
 import { useStreamAccess } from "../../../lib/use-stream-access";
@@ -55,6 +56,10 @@ function StudioRoomContent() {
   const stripeConnect = useStripeConnect({
     token,
   });
+  const streamEarnings = useStreamEarnings({
+    token,
+    streamId,
+  });
 
   const stream = room.stream;
   const isOwner = stream?.broadcaster_id === user?.id;
@@ -93,6 +98,7 @@ function StudioRoomContent() {
     publisher.error ||
     moderation.moderationError ||
     streamAccess.accessError ||
+    streamEarnings.earningsError ||
     stripeConnect.stripeError;
 
   const status = useMemo(() => {
@@ -186,6 +192,22 @@ function StudioRoomContent() {
 
     void stripeConnect.loadStatus();
   }, [stream?.id, isOwner, token, stripeConnect.loadStatus]);
+
+  useEffect(() => {
+    if (!stream || !isOwner || !token) {
+      return;
+    }
+
+    void streamEarnings.loadEarnings();
+  }, [stream?.id, isOwner, token, streamEarnings.loadEarnings]);
+
+  useEffect(() => {
+    if (!publisher.earningsSummary) {
+      return;
+    }
+
+    streamEarnings.setEarnings(publisher.earningsSummary);
+  }, [publisher.earningsSummary, streamEarnings.setEarnings]);
 
   useEffect(() => {
     if (!stream || !isOwner || !isLive || isEnded) {
@@ -320,6 +342,7 @@ function StudioRoomContent() {
 
       room.setStream(updated);
       await room.loadApiViewerCount();
+      await streamEarnings.loadEarnings().catch(() => undefined);
 
       setLocalStatus("Stream ended.");
     } catch (endError) {
@@ -446,6 +469,8 @@ function StudioRoomContent() {
             isLoadingBlockedUsers={moderation.isLoadingBlockedUsers}
             access={streamAccess.access}
             isLoadingAccess={streamAccess.isLoadingAccess}
+            earnings={streamEarnings.earnings}
+            isLoadingEarnings={streamEarnings.isLoadingEarnings}
             stripeStatus={stripeConnect.status}
             isLoadingStripeStatus={stripeConnect.isLoadingStatus}
             onGoLive={goLive}

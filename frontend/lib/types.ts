@@ -19,6 +19,7 @@ export type StreamSummary = {
   broadcaster_id: string;
   started_at: string | null;
   viewer_count?: number;
+  earnings_summary?: StreamEarningsSummary | null;
 };
 
 export type StreamRecord = {
@@ -99,6 +100,7 @@ export type SfuMessage = {
     | "kicked"
     | "payment-required"
     | "chat"
+    | "earnings-update"
     | string;
 
   sdp?: string;
@@ -115,6 +117,7 @@ export type SfuMessage = {
   username?: string;
   role?: ChatRole | string;
   mentions?: ChatMentionUser[];
+  summary?: StreamEarningsSummary;
 };
 
 export type BlockedUser = {
@@ -148,6 +151,71 @@ export type StreamAccessResponse = {
   has_paid: boolean;
   can_watch: boolean;
   access_mode: "free" | "preview" | "paid" | "payment_required";
+};
+
+export type StreamEarningsSummary = {
+  stream_id: string;
+  currency: string;
+  price_amount: number;
+  access_type: "free" | "paid";
+  viewer_count: number;
+  successful_payment_count: number;
+  paid_viewer_count: number;
+  gross_sales_amount: number;
+  platform_fees_amount: number;
+  net_earnings_amount: number;
+  refunded_amount: number;
+  refund_pending_amount: number;
+  refunded_payment_count: number;
+  refund_pending_count: number;
+  last_payment_at: string | null;
+  updated_at: string;
+};
+
+export type BroadcasterDashboardStats = {
+  owned_stream_count: number;
+  live_stream_count: number;
+  ended_stream_count: number;
+  total_unique_viewers: number;
+  successful_payment_count: number;
+  paid_viewer_count: number;
+  gross_sales_amount: number;
+  platform_fees_amount: number;
+  net_earnings_amount: number;
+  refunded_amount: number;
+  refund_pending_amount: number;
+  refunded_payment_count: number;
+  refund_pending_count: number;
+  currency: string;
+};
+
+export type ViewerDashboardStats = {
+  successful_payment_count: number;
+  purchased_stream_count: number;
+  total_spent_amount: number;
+  refunded_spend_amount: number;
+  currency: string;
+};
+
+export type DashboardPurchase = {
+  transaction_id: string;
+  stream_id: string;
+  stream_title: string;
+  broadcaster_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paid_at: string | null;
+  created_at: string;
+};
+
+export type UserDashboardResponse = {
+  user: User;
+  stripe_status: StripeConnectStatus | null;
+  broadcaster_stats: BroadcasterDashboardStats;
+  viewer_stats: ViewerDashboardStats;
+  owned_streams: StreamSummary[];
+  recent_purchases: DashboardPurchase[];
 };
 
 export type StreamAccessSettingsPayload = {
@@ -186,5 +254,6 @@ export type StripeOnboardingResponse = {
 };
 
 export type UserUpdatePayload = {
+  username?: string;
   email?: string | null;
 };

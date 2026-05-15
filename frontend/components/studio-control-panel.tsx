@@ -1,10 +1,12 @@
 import Link from "next/link";
 
 import { BlockedUsersPanel } from "./blocked-users-panel";
+import { StreamEarningsPanel } from "./stream-earnings-panel";
 import { StreamAccessSettingsPanel } from "./stream-access-settings-panel";
 import type {
   BlockedUser,
   StreamAccessResponse,
+  StreamEarningsSummary,
   StreamAccessSettingsPayload,
   StreamRecord,
   StripeConnectStatus,
@@ -34,6 +36,8 @@ type StudioControlsPanelProps = {
 
   access: StreamAccessResponse | null;
   isLoadingAccess: boolean;
+  earnings: StreamEarningsSummary | null;
+  isLoadingEarnings: boolean;
 
   stripeStatus: StripeConnectStatus | null;
   isLoadingStripeStatus: boolean;
@@ -71,6 +75,8 @@ export function StudioControlsPanel({
   isLoadingBlockedUsers,
   access,
   isLoadingAccess,
+  earnings,
+  isLoadingEarnings,
   stripeStatus,
   isLoadingStripeStatus,
   onGoLive,
@@ -192,6 +198,12 @@ export function StudioControlsPanel({
         stripeStatus={stripeStatus}
         isLoadingStripeStatus={isLoadingStripeStatus}
         onSave={onSaveAccess}
+      />
+
+      <StreamEarningsPanel
+        earnings={earnings}
+        isEnded={isEnded}
+        isLoading={isLoadingEarnings}
       />
 
       <BlockedUsersPanel

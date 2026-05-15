@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import FRONTEND_ORIGIN, SFU_INTERNAL_SECRET
 from media_router import MediaRouter
-from models import KickUserRequest, UnblockUserRequest
+from models import EarningsUpdateRequest, KickUserRequest, UnblockUserRequest
 from room import Room
 from signaling import SignalingServer
 
@@ -153,6 +153,43 @@ async def unblock_user_from_room(
         "status": "ok",
         "stream_id": payload.stream_id,
         "user_id": payload.user_id,
+    }
+
+
+@app.post("/internal/earnings-update")
+async def earnings_update(
+    payload: EarningsUpdateRequest,
+    x_sfu_secret: str | None = Header(default=None),
+):
+    verify_internal_secret(x_sfu_secret)
+
+    room = rooms.get(payload.stream_id)
+
+    if not room:
+        return {
+            "status": "ignored",
+            "reason": "room_not_found",
+            "stream_id": payload.stream_id,
+        }
+
+    delivered = await room.notify_publisher(
+        {
+            "type": "earnings-update",
+            "streamId": payload.stream_id,
+            "summary": payload.earnings_summary,
+        }
+    )
+
+    if not delivered:
+        return {
+            "status": "ignored",
+            "reason": "publisher_not_connected",
+            "stream_id": payload.stream_id,
+        }
+
+    return {
+        "status": "ok",
+        "stream_id": payload.stream_id,
     }
 
 

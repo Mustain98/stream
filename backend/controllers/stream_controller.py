@@ -9,6 +9,7 @@ from services.stream_service import (
     mark_stream_live,
     mark_stream_ended,
 )
+from services.earnings_service import build_stream_earnings_summary
 from services.session_viewer import (
     create_viewer_session,
     get_active_viewer,
@@ -41,6 +42,25 @@ def list_owned_streams_controller(session: Session, user_id: str):
     streams = list_owned_stream_records(session, user_id)
 
     return [stream_summary(session, stream) for stream in streams]
+
+
+def get_stream_earnings_controller(
+    session: Session,
+    stream_id: str,
+    user_id: str,
+):
+    stream = get_stream(session, stream_id)
+
+    if not stream:
+        return None, "stream_not_found"
+
+    if str(stream.broadcaster_id) != str(user_id):
+        return None, "not_allowed"
+
+    return build_stream_earnings_summary(
+        session=session,
+        stream=stream,
+    ), None
 
 
 def create_stream_controller(session: Session, user_id: str, payload):

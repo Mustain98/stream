@@ -4,7 +4,12 @@ import { useCallback, useRef, useState } from "react";
 
 import { api } from "./api";
 import { appendChatMessage } from "./stream-chat";
-import type { SfuMessage, StreamChatMessage, ViewerInfo } from "./types";
+import type {
+  SfuMessage,
+  StreamChatMessage,
+  StreamEarningsSummary,
+  ViewerInfo,
+} from "./types";
 
 type ConnectOptions = {
   mediaStream: MediaStream;
@@ -48,6 +53,7 @@ export function useSfuPublisher({ token, streamId }: Options) {
   const [viewerCount, setViewerCount] = useState(0);
   const [viewers, setViewers] = useState<ViewerInfo[]>([]);
   const [chatMessages, setChatMessages] = useState<StreamChatMessage[]>([]);
+  const [earningsSummary, setEarningsSummary] = useState<StreamEarningsSummary | null>(null);
 
   const [status, setStatus] = useState("Not connected.");
   const [error, setError] = useState<string | null>(null);
@@ -384,6 +390,10 @@ export function useSfuPublisher({ token, streamId }: Options) {
             setStatus(paused ? "Stream paused." : "Broadcasting.");
           }
 
+          if (message.type === "earnings-update" && message.summary) {
+            setEarningsSummary(message.summary);
+          }
+
           const chatPeerId = message.peerId;
           const chatUsername = message.username;
           const chatText = message.message;
@@ -577,6 +587,7 @@ export function useSfuPublisher({ token, streamId }: Options) {
     viewerCount,
     viewers,
     chatMessages,
+    earningsSummary,
 
     status,
     error,

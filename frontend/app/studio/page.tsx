@@ -10,6 +10,7 @@ import { useSession } from "../../components/session-provider";
 import { api } from "../../lib/api";
 import type { StreamSummary } from "../../lib/types";
 import { useStripeConnect } from "../../lib/use-stripe-connect";
+import { useUserDashboard } from "../../lib/use-user-dashboard";
 
 export default function StudioPage() {
   return (
@@ -33,6 +34,9 @@ function StudioContent() {
   const stripeConnect = useStripeConnect({
     token,
   });
+  const userDashboard = useUserDashboard({
+    token,
+  });
 
   useEffect(() => {
     if (!token) {
@@ -41,8 +45,8 @@ function StudioContent() {
 
     const loadOwnedStreams = async () => {
       try {
-        const streams = await api.getOwnedStreams(token);
-        setOwnedStreams(streams);
+        const dashboard = await userDashboard.loadDashboard();
+        setOwnedStreams(dashboard?.owned_streams ?? []);
       } catch (loadError) {
         const message =
           loadError instanceof Error ? loadError.message : "Failed to load owned streams";
@@ -54,7 +58,7 @@ function StudioContent() {
 
     void loadOwnedStreams();
     void stripeConnect.loadStatus();
-  }, [token, stripeConnect.loadStatus]);
+  }, [token, stripeConnect.loadStatus, userDashboard.loadDashboard]);
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

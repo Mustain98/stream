@@ -11,6 +11,7 @@ from core.security import (
     get_current_user,
 )
 from schemas.auth_schema import UserCreate, UserLogin, UserPublic, UserUpdate
+from services.dashboard_service import build_user_dashboard
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -78,12 +79,41 @@ def me(user: User = Depends(get_current_user)):
     return user
 
 
+@router.get("/dashboard")
+def dashboard(
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    return build_user_dashboard(
+        session=session,
+        user=user,
+    )
+
+
 @router.patch("/me", response_model=UserPublic)
 def update_me(
     payload: UserUpdate,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
+    if payload.username is not None:
+        username = payload.username.strip()
+
+        if username == "":
+            raise HTTPException(status_code=400, detail="Username cannot be empty")
+
+        existing_username = session.exec(
+            select(User).where(
+                User.username == username,
+                User.id != user.id,
+            )
+        ).first()
+
+        if existing_username:
+            raise HTTPException(status_code=400, detail="Username already exists")
+
+        user.username = username
+
     if payload.email is not None:
         email = payload.email.strip().lower()
 

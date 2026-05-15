@@ -107,6 +107,17 @@ class Room:
             except Exception as exc:
                 print(f"[Room {self.room_id}] Failed to broadcast:", str(exc))
 
+    async def notify_publisher(self, payload: dict):
+        if not self.publisher:
+            return False
+
+        try:
+            await self.publisher.send_json(payload)
+            return True
+        except Exception as exc:
+            print(f"[Room {self.room_id}] Failed to notify publisher:", str(exc))
+            return False
+
     async def broadcast_presence(self):
         await self.broadcast(self.get_presence_payload())
 

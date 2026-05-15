@@ -36,6 +36,12 @@ export function SiteShell({ children }: { children: ReactNode }) {
           </Link>
           {user ? (
             <>
+              <Link
+                className={isActive(pathname, "/profile") ? "nav-link active" : "nav-link"}
+                href="/profile"
+              >
+                Dashboard
+              </Link>
               <span className="user-pill">{user.username}</span>
               <button className="ghost-button" onClick={signOut} type="button">
                 Sign out

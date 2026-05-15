@@ -79,6 +79,11 @@ class UnblockUserRequest(BaseModel):
     user_id: str
 
 
+class EarningsUpdateRequest(BaseModel):
+    stream_id: str
+    earnings_summary: dict[str, Any]
+
+
 SIGNAL_PARSERS = {
     SignalType.JOIN.value: JoinMessage,
     SignalType.OFFER.value: OfferMessage,

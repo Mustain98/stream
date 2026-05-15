@@ -15,6 +15,43 @@ def get_sfu_headers():
     }
 
 
+def post_internal_sfu(
+    path: str,
+    payload: dict,
+):
+    if not SFU_INTERNAL_SECRET:
+        print("[SFU Client] Missing SFU_INTERNAL_SECRET")
+        return {
+            "status": "ignored",
+            "reason": "missing_sfu_internal_secret",
+        }
+
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.post(
+                f"{SFU_HTTP_URL}{path}",
+                headers=get_sfu_headers(),
+                json=payload,
+            )
+
+        if response.status_code >= 400:
+            print("[SFU Client] internal request failed:", path, response.status_code, response.text)
+            return {
+                "status": "failed",
+                "code": response.status_code,
+                "body": response.text,
+            }
+
+        return response.json()
+
+    except Exception as e:
+        print("[SFU Client] internal request error:", path, str(e))
+        return {
+            "status": "failed",
+            "reason": str(e),
+        }
+
+
 async def kick_user_from_sfu(
     stream_id: str,
     user_id: str,
@@ -95,3 +132,16 @@ async def unblock_user_from_sfu(
             "status": "failed",
             "reason": str(e),
         }
+
+
+def notify_earnings_update_in_sfu(
+    stream_id: str,
+    earnings_summary: dict,
+):
+    return post_internal_sfu(
+        "/internal/earnings-update",
+        {
+            "stream_id": stream_id,
+            "earnings_summary": earnings_summary,
+        },
+    )

@@ -6,6 +6,7 @@ from core.security import get_current_user
 from services.stream_service import get_stream
 from controllers.stream_controller import (
     create_stream_controller,
+    get_stream_earnings_controller,
     start_stream_controller,
     end_stream_controller,
     join_stream_controller,
@@ -30,6 +31,27 @@ def owned_streams(
     user=Depends(get_current_user),
 ):
     return list_owned_streams_controller(session, user.id)
+
+
+@router.get("/{stream_id}/earnings")
+def stream_earnings(
+    stream_id: str,
+    session: Session = Depends(get_session),
+    user=Depends(get_current_user),
+):
+    response, error = get_stream_earnings_controller(
+        session=session,
+        stream_id=stream_id,
+        user_id=user.id,
+    )
+
+    if error == "stream_not_found":
+        raise HTTPException(status_code=404, detail="Stream not found")
+
+    if error == "not_allowed":
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    return response
 
 
 @router.get("/{stream_id}")

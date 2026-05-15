@@ -7,11 +7,13 @@ import type {
   StreamAccessResponse,
   StreamAccessSettingsPayload,
   StreamDetailsResponse,
+  StreamEarningsSummary,
   StreamSummary,
   StripeConnectStatus,
   StripeOnboardingResponse,
   TokenResponse,
   User,
+  UserDashboardResponse,
   ViewerCountResponse,
   UserUpdatePayload
 } from "./types";
@@ -89,6 +91,12 @@ export const api = {
       cache: "no-store",
     }),
 
+  getDashboard: (token: string) =>
+    request<UserDashboardResponse>("/auth/dashboard", {
+      token,
+      cache: "no-store",
+    }),
+
   getLiveStreams: () =>
     request<StreamSummary[]>("/stream/live", {
       cache: "no-store",
@@ -102,6 +110,12 @@ export const api = {
 
   getStream: (streamId: string) =>
     request<StreamDetailsResponse>(`/stream/${streamId}`, {
+      cache: "no-store",
+    }),
+
+  getStreamEarnings: (token: string, streamId: string) =>
+    request<StreamEarningsSummary>(`/stream/${streamId}/earnings`, {
+      token,
       cache: "no-store",
     }),
 

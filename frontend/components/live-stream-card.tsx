@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { formatCurrencyAmount } from "../lib/money";
 import { formatStreamStatus, isLiveStatus } from "../lib/stream-utils";
 import type { StreamSummary } from "../lib/types";
 
@@ -15,6 +16,8 @@ export function LiveStreamCard({
   const isLive = isLiveStatus(stream.status);
   const shouldShowViewerCount =
     !isLive && typeof stream.viewer_count === "number";
+  const netEarnings = stream.earnings_summary?.net_earnings_amount;
+  const earningsCurrency = stream.earnings_summary?.currency ?? "usd";
 
   return (
     <Link className="stream-card" href={href ?? `/watch/${stream.id}`}>
@@ -23,9 +26,17 @@ export function LiveStreamCard({
           {formatStreamStatus(stream.status)}
         </span>
 
-        {shouldShowViewerCount ? (
-          <span className="viewer-pill">{stream.viewer_count} viewers</span>
-        ) : null}
+        <div className="stream-card-pills">
+          {shouldShowViewerCount ? (
+            <span className="viewer-pill">{stream.viewer_count} viewers</span>
+          ) : null}
+
+          {typeof netEarnings === "number" ? (
+            <span className="earnings-pill">
+              Earned {formatCurrencyAmount(netEarnings, earningsCurrency)}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <h2>{stream.title}</h2>
