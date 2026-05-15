@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { PaymentRequiredOverlay } from "../../../components/payment-required-overlay";
 import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
+import { StreamChatPanel } from "../../../components/stream-chat-panel";
 import { isLiveStatus } from "../../../lib/stream-utils";
 import { useSfuViewer } from "../../../lib/use-sfu-viewer";
 import { useStreamAccess } from "../../../lib/use-stream-access";
@@ -60,6 +61,8 @@ function WatchContent() {
   );
 
   const handlePaymentRequired = useCallback(() => {
+    setPaymentMessage(null);
+    setPaymentError(null);
     setPaymentRequired(true);
   }, []);
 
@@ -72,6 +75,35 @@ function WatchContent() {
   });
 
   const viewerCount = isLive ? viewer.viewerCount : room.apiViewerCount;
+  const canUseChat = Boolean(
+    token &&
+      user &&
+      stream &&
+      isLive &&
+      streamAccess.access?.can_watch &&
+      !shouldShowPayment &&
+      viewer.isConnected
+  );
+
+  const chatDisabledReason = (() => {
+    if (!isLive) {
+      return "Chat opens when the stream goes live.";
+    }
+
+    if (shouldShowPayment) {
+      return "Unlock the full stream to join the chat.";
+    }
+
+    if (!streamAccess.access?.can_watch) {
+      return "Stream access is required before you can chat.";
+    }
+
+    if (!viewer.isConnected) {
+      return "Connecting you to the live room...";
+    }
+
+    return "Chat is ready.";
+  })();
 
   const error = room.error || viewer.error || streamAccess.accessError || paymentError;
 
@@ -123,9 +155,7 @@ function WatchContent() {
         }
 
         try {
-          await streamAccess.loadAccess();
-
-          const latestAccess = streamAccess.access;
+          const latestAccess = await streamAccess.loadAccess();
 
           if (latestAccess?.access_mode === "paid" || latestAccess?.has_paid) {
             setPaymentRequired(false);
@@ -236,64 +266,61 @@ function WatchContent() {
       ) : null}
 
       {!room.isLoading && stream ? (
-        <div className="panel stack-md">
-          <div className="video-frame">
-            <video
-              autoPlay
-              controls
-              playsInline
-              ref={videoRef}
-              className={shouldShowPayment ? "blurred-video" : ""}
-            />
-
-            {viewer.isPaused ? (
-              <div className="pause-overlay">
-                <strong>Stream paused</strong>
-              </div>
-            ) : null}
-
-            {!isLive ? (
-              <div className="pause-overlay">
-                <strong>Stream is not live</strong>
-              </div>
-            ) : null}
-
-            {shouldShowPayment && streamAccess.access ? (
-              <PaymentRequiredOverlay
-                priceAmount={streamAccess.access.price_amount}
-                currency={streamAccess.access.currency}
-                isPaying={isPaying}
-                onPay={handlePay}
+        <div className="watch-room-grid">
+          <div className="panel stack-md">
+            <div className="video-frame">
+              <video
+                autoPlay
+                controls
+                playsInline
+                ref={videoRef}
+                className={shouldShowPayment ? "blurred-video" : ""}
               />
-            ) : null}
+
+              {viewer.isPaused ? (
+                <div className="pause-overlay">
+                  <strong>Stream paused</strong>
+                </div>
+              ) : null}
+
+              {!isLive ? (
+                <div className="pause-overlay">
+                  <strong>Stream is not live</strong>
+                </div>
+              ) : null}
+
+              {shouldShowPayment && streamAccess.access ? (
+                <PaymentRequiredOverlay
+                  priceAmount={streamAccess.access.price_amount}
+                  currency={streamAccess.access.currency}
+                  isPaying={isPaying}
+                  onPay={handlePay}
+                />
+              ) : null}
+            </div>
+
+            <div className="status-bar">
+              <span className="status-dot" />
+              <span>{status}</span>
+            </div>
           </div>
 
-          <div className="status-bar">
-            <span className="status-dot" />
-            <span>{status}</span>
-          </div>
-        </div>
-      ) : null}
-
-      {isLive ? (
-        <div className="panel stack-md">
-          <div>
-            <p className="eyebrow">Live viewers</p>
-            <h2>{viewerCount} watching</h2>
-          </div>
-
-          {viewer.viewers.length === 0 ? (
-            <p className="muted">No viewers connected yet.</p>
-          ) : (
-            <ul className="viewer-list">
-              {viewer.viewers.map((liveViewer) => (
-                <li key={liveViewer.peerId}>
-                  <strong>{liveViewer.username}</strong>
-                  <span>{liveViewer.userId}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <StreamChatPanel
+            audienceCount={viewerCount}
+            canSend={canUseChat}
+            currentUserId={user?.id ?? null}
+            currentUsername={user?.username ?? null}
+            disabledReason={chatDisabledReason}
+            heading="Join the room"
+            messages={viewer.chatMessages}
+            onSend={viewer.sendChat}
+            participants={viewer.viewers.map((liveViewer) => ({
+              peerId: liveViewer.peerId,
+              userId: liveViewer.userId,
+              username: liveViewer.username,
+              role: "subscriber",
+            }))}
+          />
         </div>
       ) : null}
     </section>

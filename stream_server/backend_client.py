@@ -1,49 +1,70 @@
-import os
-
 import httpx
-from dotenv import load_dotenv
 
-load_dotenv()
-
-MAIN_BACKEND_URL = os.getenv("MAIN_BACKEND_URL")
-SFU_INTERNAL_SECRET = os.getenv("SFU_INTERNAL_SECRET")
-SFU_HEARTBEAT_INTERVAL_SECONDS = int(
-    os.getenv("SFU_HEARTBEAT_INTERVAL_SECONDS")
+from config import (
+    MAIN_BACKEND_URL,
+    SFU_INTERNAL_SECRET,
+    get_internal_headers,
 )
 
 
-def get_headers():
-    return {
-        "X-SFU-Secret": SFU_INTERNAL_SECRET or "",
-    }
+class BackendClient:
+    def __init__(self):
+        self.base_url = MAIN_BACKEND_URL.rstrip("/")
 
+    async def post_internal(self, path: str, payload: dict | None = None):
+        if not SFU_INTERNAL_SECRET:
+            print("[BackendClient] Missing SFU_INTERNAL_SECRET")
+            return None
 
-async def heartbeat_publisher(stream_id: str):
-    """
-    Called by the SFU while the publisher is connected.
-
-    This extends live_expires_at in the main backend.
-    If the publisher disconnects, this heartbeat stops.
-    Then the main backend cleanup loop eventually ends the stream.
-    """
-
-    if not SFU_INTERNAL_SECRET:
-        print("[BackendClient] Missing SFU_INTERNAL_SECRET")
-        return
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.post(
-                f"{MAIN_BACKEND_URL}/internal/sfu/publisher-heartbeat/{stream_id}",
-                headers=get_headers(),
-            )
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(
+                    f"{self.base_url}{path}",
+                    headers=get_internal_headers(),
+                    json=payload,
+                )
 
             if response.status_code >= 400:
                 print(
-                    "[BackendClient] publisher-heartbeat failed:",
+                    "[BackendClient] internal request failed:",
+                    path,
                     response.status_code,
                     response.text,
                 )
+                return None
 
-    except Exception as e:
-        print("[BackendClient] publisher-heartbeat error:", str(e))
+            try:
+                return response.json()
+            except Exception:
+                return None
+
+        except Exception as exc:
+            print("[BackendClient] internal request error:", path, str(exc))
+            return None
+
+    async def heartbeat_publisher(self, stream_id: str):
+        return await self.post_internal(
+            f"/internal/sfu/publisher-heartbeat/{stream_id}"
+        )
+
+    async def preview_start(self, stream_id: str, user_id: str):
+        return await self.post_internal(
+            "/internal/sfu/preview/start",
+            {
+                "stream_id": stream_id,
+                "user_id": user_id,
+            },
+        )
+
+    async def preview_end(self, stream_id: str, user_id: str, reason: str):
+        return await self.post_internal(
+            "/internal/sfu/preview/end",
+            {
+                "stream_id": stream_id,
+                "user_id": user_id,
+                "reason": reason,
+            },
+        )
+
+
+backend_client = BackendClient()

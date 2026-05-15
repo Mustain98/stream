@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RequireAuth } from "../../../components/require-auth";
+import { StreamChatPanel } from "../../../components/stream-chat-panel";
 import { StudioControlsPanel } from "../../../components/studio-control-panel";
 import { StudioVideoPanel } from "../../../components/studio-video-panel";
 import { useSession } from "../../../components/session-provider";
@@ -65,6 +66,26 @@ function StudioRoomContent() {
 
   const viewerCount = isLive ? publisher.viewerCount : room.apiViewerCount;
   const viewers = isLive ? publisher.viewers : [];
+  const canUseStudioChat = Boolean(isLive && !isEnded && publisher.isConnected);
+  const studioChatDisabledReason = (() => {
+    if (isEnded) {
+      return "This chat closed when the stream ended.";
+    }
+
+    if (!isLive) {
+      return "Go live to open the room chat.";
+    }
+
+    if (publisher.isReconnecting) {
+      return "Reconnecting your room chat...";
+    }
+
+    if (!publisher.isConnected) {
+      return "Connect your broadcast to start chatting with viewers.";
+    }
+
+    return "Chat is ready.";
+  })();
 
   const error =
     localError ||
@@ -369,24 +390,43 @@ function StudioRoomContent() {
 
       {stream && isOwner ? (
         <div className="studio-room-grid">
-          <StudioVideoPanel
-            videoRef={videoRef}
-            isLive={isLive}
-            isEnded={isEnded}
-            cameraReady={cameraReady}
-            isPaused={publisher.isPaused}
-            isConnected={publisher.isConnected}
-            isCameraEnabled={publisher.isCameraEnabled}
-            isMicEnabled={publisher.isMicEnabled}
-            status={status}
-            reconnectFailed={publisher.reconnectFailed}
-            viewerCount={viewerCount}
-            viewers={viewers}
-            onTogglePause={publisher.togglePause}
-            onToggleCamera={publisher.toggleCamera}
-            onToggleMic={publisher.toggleMic}
-            onBlockViewer={moderation.blockViewer}
-          />
+          <div className="studio-room-main">
+            <StudioVideoPanel
+              videoRef={videoRef}
+              isLive={isLive}
+              isEnded={isEnded}
+              cameraReady={cameraReady}
+              isPaused={publisher.isPaused}
+              isConnected={publisher.isConnected}
+              isCameraEnabled={publisher.isCameraEnabled}
+              isMicEnabled={publisher.isMicEnabled}
+              status={status}
+              reconnectFailed={publisher.reconnectFailed}
+              viewerCount={viewerCount}
+              viewers={viewers}
+              onTogglePause={publisher.togglePause}
+              onToggleCamera={publisher.toggleCamera}
+              onToggleMic={publisher.toggleMic}
+              onBlockViewer={moderation.blockViewer}
+            />
+
+            <StreamChatPanel
+              audienceCount={viewerCount}
+              canSend={canUseStudioChat}
+              currentUserId={user?.id ?? null}
+              currentUsername={user?.username ?? null}
+              disabledReason={studioChatDisabledReason}
+              heading="Talk with viewers"
+              messages={publisher.chatMessages}
+              onSend={publisher.sendChat}
+              participants={viewers.map((viewer) => ({
+                peerId: viewer.peerId,
+                userId: viewer.userId,
+                username: viewer.username,
+                role: "subscriber",
+              }))}
+            />
+          </div>
 
           <StudioControlsPanel
             stream={stream}

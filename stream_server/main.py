@@ -1,35 +1,23 @@
-import os
-
-from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from models import UnblockUserRequest
-from room import Room
-from media_router import MediaRouter
-from signaling import SignalingServer
 
-load_dotenv()
+from config import FRONTEND_ORIGIN, SFU_INTERNAL_SECRET
+from media_router import MediaRouter
+from models import KickUserRequest, UnblockUserRequest
+from room import Room
+from signaling import SignalingServer
 
 app = FastAPI(title="Custom Python SFU Server")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[FRONTEND_ORIGIN, "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-SFU_INTERNAL_SECRET = os.getenv("SFU_INTERNAL_SECRET")
-
-rooms = {}
-
-
-class KickUserRequest(BaseModel):
-    stream_id: str
-    user_id: str
-    reason: str = "blocked"
+rooms: dict[str, Room] = {}
 
 
 def verify_internal_secret(x_sfu_secret: str | None):
@@ -90,6 +78,7 @@ async def list_rooms():
             "subscriberCount": len(room.subscribers),
             "tracks": list(room.tracks.keys()),
             "blockedUsers": list(room.blocked_user_ids),
+            "streamState": room.stream_state,
         }
 
     return result
@@ -133,6 +122,7 @@ async def kick_user_from_room(
         "user_id": payload.user_id,
         "kicked": kicked_count,
     }
+
 
 @app.post("/internal/unblock-user")
 async def unblock_user_from_room(

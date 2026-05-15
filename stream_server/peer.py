@@ -1,19 +1,20 @@
-import uuid
 import asyncio
+import uuid
+
 from aiortc import RTCPeerConnection
 
 
 class Peer:
-    def __init__(self,
-        role,
-        room_id, 
-        websocket, 
-        user_id=None, 
-        username=None, 
-        access_mode="free",
-        preview_seconds=0
-        ):
-
+    def __init__(
+        self,
+        role: str,
+        room_id: str,
+        websocket,
+        user_id: str | None = None,
+        username: str | None = None,
+        access_mode: str = "free",
+        preview_seconds: int = 0,
+    ):
         self.id = str(uuid.uuid4())
         self.role = role
         self.room_id = room_id
@@ -24,11 +25,29 @@ class Peer:
 
         self.access_mode = access_mode or "free"
         self.preview_seconds = int(preview_seconds or 0)
+        self.preview_end_reported = False
 
-        self.pc = None
+        self.pc: RTCPeerConnection | None = None
         self.attached_kinds: set[str] = set()
-        self.heartbeat_task=None
-        self.preview_task=None
+
+        self.heartbeat_task: asyncio.Task | None = None
+        self.preview_task: asyncio.Task | None = None
+
+    @property
+    def is_publisher(self) -> bool:
+        return self.role == "publisher"
+
+    @property
+    def is_subscriber(self) -> bool:
+        return self.role == "subscriber"
+
+    @property
+    def is_preview(self) -> bool:
+        return (
+            self.is_subscriber
+            and self.access_mode == "preview"
+            and self.preview_seconds > 0
+        )
 
     async def create_peer_connection(self):
         pc = RTCPeerConnection()
@@ -36,44 +55,50 @@ class Peer:
 
         @pc.on("connectionstatechange")
         async def on_connection_state_change():
-            print(
-                f"[Peer {self.id}] Connection state:",
-                pc.connectionState,
-            )
-
-            if pc.connectionState in ["failed", "closed", "disconnected"]:
-                await self.close()
+            print(f"[Peer {self.id}] Connection state:", pc.connectionState)
 
         @pc.on("iceconnectionstatechange")
         async def on_ice_connection_state_change():
-            print(
-                f"[Peer {self.id}] ICE state:",
-                pc.iceConnectionState,
-            )
+            print(f"[Peer {self.id}] ICE state:", pc.iceConnectionState)
+
+        return pc
 
     async def send_json(self, message: dict):
         await self.websocket.send_json(message)
 
-    async def close(self):
+    def cancel_background_tasks(self):
         current_task = asyncio.current_task()
 
-        if self.heartbeat_task and self.heartbeat_task is not current_task:
-            self.heartbeat_task.cancel()
-            self.heartbeat_task = None
+        for task_attr in ["heartbeat_task", "preview_task"]:
+            task = getattr(self, task_attr)
 
-        if self.preview_task and self.preview_task is not current_task:
-            self.preview_task.cancel()
-            self.preview_task = None
+            if task and task is not current_task:
+                task.cancel()
 
+            setattr(self, task_attr, None)
+
+    async def close_peer_connection(self):
         pc = self.pc
+        self.pc = None
 
         if not pc:
             return
 
-        self.pc = None
-
         try:
             if pc.connectionState != "closed":
                 await pc.close()
-        except Exception as e:
-            print(f"[Peer {self.id}] close ignored error:", str(e))
+        except Exception as exc:
+            print(f"[Peer {self.id}] close pc ignored error:", str(exc))
+
+    async def close_websocket(self):
+        try:
+            await self.websocket.close()
+        except Exception:
+            pass
+
+    async def close(self, close_websocket: bool = False):
+        self.cancel_background_tasks()
+        await self.close_peer_connection()
+
+        if close_websocket:
+            await self.close_websocket()

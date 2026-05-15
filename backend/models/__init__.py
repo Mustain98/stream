@@ -9,6 +9,7 @@ from .transaction import (
     StreamTransaction,
     StripeWebhookEvent,
 )
+from .preview import StreamPreviewUsage
 
 __all__ = [
     "User",
@@ -24,4 +25,5 @@ __all__ = [
     "StreamAccessSetting",
     "StreamTransaction",
     "StripeWebhookEvent",
+    "StreamPreviewUsage"
 ]

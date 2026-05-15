@@ -10,8 +10,86 @@ from services.transaction_service import (
     get_or_create_access_setting,
     has_paid_for_stream,
 )
+from services.preview_service import get_remaining_preview_seconds
+
 
 SFU_WS_URL = os.getenv("SFU_WS_URL", "ws://localhost:7001/ws")
+
+
+def get_stream_access_response(
+    session: Session,
+    stream_id: str,
+    user,
+    stream,
+):
+    if not stream:
+        return None
+
+    setting = get_or_create_access_setting(session, stream_id)
+
+    is_owner = str(user.id) == str(stream.broadcaster_id)
+
+    if is_owner:
+        return {
+            "access_mode": "paid",
+            "can_watch": True,
+            "has_paid": True,
+            "price_amount": setting.price_amount,
+            "currency": setting.currency,
+            "free_preview_seconds": 0,
+        }
+
+    if setting.access_type == StreamAccessType.FREE:
+        return {
+            "access_mode": "free",
+            "can_watch": True,
+            "has_paid": False,
+            "price_amount": setting.price_amount,
+            "currency": setting.currency,
+            "free_preview_seconds": 0,
+        }
+
+    has_paid = has_paid_for_stream(
+        session=session,
+        stream_id=stream_id,
+        user_id=str(user.id),
+    )
+
+    if has_paid:
+        return {
+            "access_mode": "paid",
+            "can_watch": True,
+            "has_paid": True,
+            "price_amount": setting.price_amount,
+            "currency": setting.currency,
+            "free_preview_seconds": 0,
+        }
+
+    remaining_preview = get_remaining_preview_seconds(
+        session=session,
+        stream_id=stream_id,
+        user_id=str(user.id),
+        preview_limit_seconds=setting.free_preview_seconds,
+    )
+
+    if remaining_preview > 0:
+        return {
+            "access_mode": "preview",
+            "can_watch": True,
+            "has_paid": False,
+            "price_amount": setting.price_amount,
+            "currency": setting.currency,
+            "free_preview_seconds": remaining_preview,
+        }
+
+    return {
+        "access_mode": "payment_required",
+        "can_watch": False,
+        "has_paid": False,
+        "price_amount": setting.price_amount,
+        "currency": setting.currency,
+        "free_preview_seconds": 0,
+    }
 
 
 def create_sfu_ticket_controller(
@@ -38,7 +116,11 @@ def create_sfu_ticket_controller(
     access_mode = "free"
     preview_seconds = 0
 
-    if role == "subscriber":
+    if role == "publisher":
+        access_mode = "paid"
+        preview_seconds = 0
+
+    else:
         setting = get_or_create_access_setting(session, stream_id)
 
         if setting.access_type == StreamAccessType.FREE:
@@ -57,16 +139,22 @@ def create_sfu_ticket_controller(
                 preview_seconds = 0
 
             elif setting.free_preview_seconds > 0:
+                preview_seconds = get_remaining_preview_seconds(
+                    session=session,
+                    stream_id=stream_id,
+                    user_id=str(user.id),
+                    preview_limit_seconds=setting.free_preview_seconds,
+                )
+
+                print("preview_seconds:", preview_seconds)
+
+                if preview_seconds <= 0:
+                    return None, "payment_required"
+
                 access_mode = "preview"
-                preview_seconds = setting.free_preview_seconds
 
             else:
                 return None, "payment_required"
-
-    # Publisher should always get full access to their own stream.
-    if role == "publisher":
-        access_mode = "paid"
-        preview_seconds = 0
 
     username = getattr(user, "username", None)
 
@@ -78,8 +166,6 @@ def create_sfu_ticket_controller(
         access_mode=access_mode,
         preview_seconds=preview_seconds,
     )
-
-    session.commit()
 
     return {
         "sfuUrl": SFU_WS_URL,

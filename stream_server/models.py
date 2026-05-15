@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,9 @@ class SignalType(str, Enum):
     KICKED = "kicked"
     PAYMENT_REQUIRED = "payment-required"
 
+    # Future extension point. Chat is already supported as a message handler.
+    CHAT = "chat"
+
 
 class PeerRole(str, Enum):
     PUBLISHER = "publisher"
@@ -26,12 +29,9 @@ class PeerRole(str, Enum):
 
 class JoinMessage(BaseModel):
     type: SignalType = Field(default=SignalType.JOIN)
-
-    # Now token is the only trusted field.
     token: str
 
-    # Optional debug fields.
-    # SFU should ignore these for security decisions.
+    # Debug-only fields. Security decisions must use the signed token.
     roomId: Optional[str] = None
     role: Optional[PeerRole] = None
     userId: Optional[str] = None
@@ -40,11 +40,6 @@ class JoinMessage(BaseModel):
 
 class OfferMessage(BaseModel):
     type: SignalType = Field(default=SignalType.OFFER)
-    sdp: str
-
-
-class AnswerMessage(BaseModel):
-    type: SignalType = Field(default=SignalType.ANSWER)
     sdp: str
 
 
@@ -63,41 +58,42 @@ class LeaveMessage(BaseModel):
     type: SignalType = Field(default=SignalType.LEAVE)
 
 
-class ErrorMessage(BaseModel):
-    type: SignalType = Field(default=SignalType.ERROR)
-    message: str
-
-
 class StreamStateMessage(BaseModel):
     type: SignalType = Field(default=SignalType.STREAM_STATE)
     state: str
 
 
-def parse_signal_message(data: dict[str, Any]):
-    msg_type = data.get("type")
+class ChatMessage(BaseModel):
+    type: SignalType = Field(default=SignalType.CHAT)
+    message: str
 
-    if msg_type == SignalType.JOIN.value:
-        return JoinMessage(**data)
-
-    if msg_type == SignalType.OFFER.value:
-        return OfferMessage(**data)
-
-    if msg_type == SignalType.ICE.value:
-        return IceMessage(**data)
-
-    if msg_type == SignalType.LEAVE.value:
-        return LeaveMessage(**data)
-
-    if msg_type == SignalType.STREAM_STATE.value:
-        return StreamStateMessage(**data)
-
-    raise ValueError(f"Unknown signaling message type: {msg_type}")
 
 class KickUserRequest(BaseModel):
     stream_id: str
     user_id: str
     reason: str = "blocked"
 
+
 class UnblockUserRequest(BaseModel):
     stream_id: str
     user_id: str
+
+
+SIGNAL_PARSERS = {
+    SignalType.JOIN.value: JoinMessage,
+    SignalType.OFFER.value: OfferMessage,
+    SignalType.ICE.value: IceMessage,
+    SignalType.LEAVE.value: LeaveMessage,
+    SignalType.STREAM_STATE.value: StreamStateMessage,
+    SignalType.CHAT.value: ChatMessage,
+}
+
+
+def parse_signal_message(data: dict[str, Any]):
+    msg_type = data.get("type")
+    parser = SIGNAL_PARSERS.get(msg_type)
+
+    if not parser:
+        raise ValueError(f"Unknown signaling message type: {msg_type}")
+
+    return parser(**data)

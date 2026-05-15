@@ -2,8 +2,9 @@
 
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 
-import { api } from "./api";
-import type { SfuMessage, ViewerInfo } from "./types";
+import { api, HttpError } from "./api";
+import { appendChatMessage } from "./stream-chat";
+import type { SfuMessage, StreamChatMessage, ViewerInfo } from "./types";
 
 type Options = {
   token: string | null;
@@ -34,6 +35,7 @@ export function useSfuViewer({
   const [isPaused, setIsPaused] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [viewers, setViewers] = useState<ViewerInfo[]>([]);
+  const [chatMessages, setChatMessages] = useState<StreamChatMessage[]>([]);
   const [status, setStatus] = useState("Not connected.");
   const [error, setError] = useState<string | null>(null);
 
@@ -179,6 +181,28 @@ export function useSfuViewer({
     setStatus("Renegotiating stream...");
   }, []);
 
+  const sendChat = useCallback(async (message: string) => {
+    const socket = socketRef.current;
+    const trimmedMessage = message.trim();
+
+    if (!trimmedMessage) {
+      return false;
+    }
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    socket.send(
+      JSON.stringify({
+        type: "chat",
+        message: trimmedMessage,
+      })
+    );
+
+    return true;
+  }, []);
+
   const connect = useCallback(async () => {
     if (!token) {
       return;
@@ -271,6 +295,26 @@ export function useSfuViewer({
           setStatus(paused ? "Stream paused." : "Watching live.");
         }
 
+        const chatPeerId = message.peerId;
+        const chatUsername = message.username;
+        const chatText = message.message;
+
+        if (message.type === "chat" && chatPeerId && chatUsername && chatText) {
+          setChatMessages((currentMessages) =>
+            appendChatMessage(currentMessages, {
+              id: `${chatPeerId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              roomId: message.roomId,
+              peerId: chatPeerId,
+              userId: message.userId ?? null,
+              username: chatUsername,
+              role: message.role,
+              message: chatText,
+              mentions: message.mentions ?? [],
+              receivedAt: new Date().toISOString(),
+            })
+          );
+        }
+
         if (message.type === "payment-required") {
           setError(message.message || "Preview ended. Please pay to continue watching.");
           onPaymentRequiredRef.current?.();
@@ -307,6 +351,11 @@ export function useSfuViewer({
         connectError instanceof Error ? connectError.message : "Unable to join stream";
 
       setError(message);
+
+      if (connectError instanceof HttpError && connectError.status === 402) {
+        onPaymentRequiredRef.current?.();
+      }
+
       await disconnect(true);
     } finally {
       connectingRef.current = false;
@@ -344,9 +393,11 @@ export function useSfuViewer({
     isPaused,
     viewerCount,
     viewers,
+    chatMessages,
     status,
     error,
     setError,
+    sendChat,
     connect,
     disconnect,
   };

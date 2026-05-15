@@ -10,15 +10,10 @@ class PublishedTrack:
 class Room:
     def __init__(self, room_id: str):
         self.room_id = room_id
-
         self.publisher = None
         self.subscribers: Dict[str, object] = {}
-
         self.tracks: Dict[str, PublishedTrack] = {}
         self.stream_state = "live"
-
-        # SFU-side temporary block cache.
-        # Main backend DB is still the source of truth.
         self.blocked_user_ids: set[str] = set()
 
     def set_publisher(self, peer):
@@ -44,17 +39,22 @@ class Room:
 
     def get_track(self, kind: str):
         published = self.tracks.get(kind)
-
-        if published:
-            return published.track
-
-        return None
+        return published.track if published else None
 
     def get_all_tracks(self):
         return list(self.tracks.values())
 
     def get_subscribers(self):
         return list(self.subscribers.values())
+
+    def get_all_peers(self):
+        peers = []
+
+        if self.publisher:
+            peers.append(self.publisher)
+
+        peers.extend(self.subscribers.values())
+        return peers
 
     def is_empty(self):
         return self.publisher is None and len(self.subscribers) == 0
@@ -78,38 +78,6 @@ class Room:
             if str(peer.user_id) == str(user_id)
         ]
 
-    async def kick_user(self, user_id: str, reason: str = "blocked") -> int:
-        targets = self.find_subscribers_by_user_id(user_id)
-
-        for peer in targets:
-            try:
-                await peer.send_json(
-                    {
-                        "type": "kicked",
-                        "reason": reason,
-                        "message": "You were removed from this live stream.",
-                    }
-                )
-            except Exception as e:
-                print(f"[Room {self.room_id}] Failed to notify kicked peer:", e)
-
-            try:
-                await peer.close()
-            except Exception as e:
-                print(f"[Room {self.room_id}] Failed to close kicked peer:", e)
-
-            try:
-                await peer.websocket.close()
-            except Exception:
-                pass
-
-            self.remove_peer(peer.id)
-
-        if targets:
-            await self.broadcast_presence()
-
-        return len(targets)
-
     def get_viewer_list(self):
         return [
             {
@@ -130,38 +98,77 @@ class Room:
             "viewers": viewers,
         }
 
-    async def broadcast_presence(self):
-        payload = self.get_presence_payload()
-
-        targets = []
-
-        if self.publisher:
-            targets.append(self.publisher)
-
-        targets.extend(self.subscribers.values())
+    async def broadcast(self, payload: dict, include_publisher: bool = True):
+        targets = self.get_all_peers() if include_publisher else self.get_subscribers()
 
         for peer in targets:
             try:
                 await peer.send_json(payload)
-            except Exception as e:
-                print(f"[Room {self.room_id}] Failed to send presence:", e)
+            except Exception as exc:
+                print(f"[Room {self.room_id}] Failed to broadcast:", str(exc))
+
+    async def broadcast_presence(self):
+        await self.broadcast(self.get_presence_payload())
 
     async def broadcast_stream_state(self):
-        payload = {
-            "type": "stream-state",
-            "roomId": self.room_id,
-            "state": self.stream_state,
-        }
+        await self.broadcast(
+            {
+                "type": "stream-state",
+                "roomId": self.room_id,
+                "state": self.stream_state,
+            }
+        )
 
-        targets = []
-
-        if self.publisher:
-            targets.append(self.publisher)
-
-        targets.extend(self.subscribers.values())
+    async def kick_user(self, user_id: str, reason: str = "blocked") -> int:
+        targets = self.find_subscribers_by_user_id(user_id)
 
         for peer in targets:
             try:
-                await peer.send_json(payload)
-            except Exception as e:
-                print(f"[Room {self.room_id}] Failed to send stream state:", e)
+                await peer.send_json(
+                    {
+                        "type": "kicked",
+                        "reason": reason,
+                        "message": "You were removed from this live stream.",
+                    }
+                )
+            except Exception as exc:
+                print(f"[Room {self.room_id}] Failed to notify kicked peer:", exc)
+
+            await peer.close(close_websocket=True)
+            self.remove_peer(peer.id)
+
+        if targets:
+            await self.broadcast_presence()
+
+        return len(targets)
+    
+    def find_peer_by_username(self, username: str):
+        target = username.lower()
+
+        if self.publisher and self.publisher.username.lower() == target:
+            return self.publisher
+
+        for peer in self.subscribers.values():
+            if peer.username.lower() == target:
+                return peer
+
+        return None
+
+    def find_peers_by_usernames(self, usernames: list[str]):
+        peers = []
+
+        seen_user_ids = set()
+
+        for username in usernames:
+            peer = self.find_peer_by_username(username)
+
+            if not peer:
+                continue
+
+            if peer.user_id in seen_user_ids:
+                continue
+
+            seen_user_ids.add(peer.user_id)
+            peers.append(peer)
+
+        return peers

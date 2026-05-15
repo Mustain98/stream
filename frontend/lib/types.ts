@@ -61,6 +61,27 @@ export type ViewerInfo = {
   username: string;
 };
 
+export type ChatRole = "publisher" | "subscriber";
+
+export type ChatMentionUser = {
+  peerId: string;
+  userId: string | null;
+  username: string;
+  role?: ChatRole | string;
+};
+
+export type StreamChatMessage = {
+  id: string;
+  roomId?: string;
+  peerId: string;
+  userId: string | null;
+  username: string;
+  role?: ChatRole | string;
+  message: string;
+  mentions: ChatMentionUser[];
+  receivedAt: string;
+};
+
 export type StreamState = "live" | "paused";
 
 export type SfuMessage = {
@@ -77,6 +98,7 @@ export type SfuMessage = {
     | "stream-state"
     | "kicked"
     | "payment-required"
+    | "chat"
     | string;
 
   sdp?: string;
@@ -88,6 +110,11 @@ export type SfuMessage = {
   viewerCount?: number;
   viewers?: ViewerInfo[];
   state?: StreamState;
+  peerId?: string;
+  userId?: string | null;
+  username?: string;
+  role?: ChatRole | string;
+  mentions?: ChatMentionUser[];
 };
 
 export type BlockedUser = {

@@ -18,7 +18,7 @@ from routes.stream_control import router as stream_control_router
 from routes.transaction import router as transaction_router
 from routes.stripe_payment import router as stripe_payment_router
 from routes.stripe_connect import router as stripe_connect_router
-
+from routes.internal_preview import router as preview_router
 from services.stream_cleanup import stream_cleanup_loop
 
 
@@ -64,6 +64,7 @@ app.include_router(stream_control_router)
 app.include_router(transaction_router)
 app.include_router(stripe_payment_router)
 app.include_router(stripe_connect_router)
+app.include_router(preview_router)
 
 
 @app.get("/")
