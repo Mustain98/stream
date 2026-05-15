@@ -146,8 +146,8 @@ def build_stream_earnings_summary(
         "refund_pending_amount": refund_pending_amount,
         "refunded_payment_count": refunded_payment_count,
         "refund_pending_count": refund_pending_count,
-        "last_payment_at": last_payment_at,
-        "updated_at": datetime.utcnow(),
+        "last_payment_at": last_payment_at.isoformat() if last_payment_at else None,
+        "updated_at": datetime.utcnow().isoformat(),
     }
 
 

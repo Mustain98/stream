@@ -10,11 +10,14 @@ def relay_stream_earnings_update(
     stream = get_stream(session, stream_id)
 
     if not stream:
-        return {
+        result = {
             "status": "ignored",
             "reason": "stream_not_found",
             "stream_id": stream_id,
         }
+
+        print("[Earnings Relay]", result)
+        return result
 
     earnings_summary = build_stream_earnings_summary(
         session=session,
@@ -22,14 +25,17 @@ def relay_stream_earnings_update(
     )
 
     relay_result = notify_earnings_update_in_sfu(
-        stream_id=stream_id,
+        stream_id=str(stream_id),
         earnings_summary=earnings_summary,
     )
 
-    return {
+    result = {
         "status": "ok",
-        "stream_id": stream_id,
+        "stream_id": str(stream_id),
         "earnings_summary": earnings_summary,
         "relay": relay_result,
     }
 
+    print("[Earnings Relay]", result)
+
+    return result

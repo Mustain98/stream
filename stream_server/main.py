@@ -163,35 +163,53 @@ async def earnings_update(
 ):
     verify_internal_secret(x_sfu_secret)
 
-    room = rooms.get(payload.stream_id)
+    print(
+        "[SFU Earnings Update] received:",
+        "stream_id=", payload.stream_id,
+        "rooms=", list(rooms.keys()),
+    )
+
+    room = rooms.get(str(payload.stream_id))
 
     if not room:
-        return {
+        result = {
             "status": "ignored",
             "reason": "room_not_found",
             "stream_id": payload.stream_id,
+            "active_rooms": list(rooms.keys()),
         }
 
-    delivered = await room.notify_publisher(
-        {
-            "type": "earnings-update",
-            "streamId": payload.stream_id,
-            "summary": payload.earnings_summary,
-        }
-    )
+        print("[SFU Earnings Update]", result)
+        return result
 
-    if not delivered:
-        return {
+    if not room.publisher:
+        result = {
             "status": "ignored",
             "reason": "publisher_not_connected",
             "stream_id": payload.stream_id,
         }
 
-    return {
-        "status": "ok",
-        "stream_id": payload.stream_id,
+        print("[SFU Earnings Update]", result)
+        return result
+
+    message = {
+        "type": "earnings-update",
+        "streamId": payload.stream_id,
+        "summary": payload.earnings_summary,
     }
 
+    delivered = await room.notify_publisher(message)
+
+    result = {
+        "status": "ok" if delivered else "ignored",
+        "reason": None if delivered else "publisher_send_failed",
+        "stream_id": payload.stream_id,
+        "publisher_id": room.publisher.id if room.publisher else None,
+    }
+
+    print("[SFU Earnings Update]", result)
+
+    return result
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
