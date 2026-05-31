@@ -10,16 +10,16 @@ from sqlmodel import SQLModel
 
 from db.session import engine
 
-from routes.auth import router as auth_router
-from routes.stream import router as stream_router
-from routes.stream_ticket import router as sfu_ticket_router
-from routes.stream_server import router as sfu_internal_router
-from routes.stream_control import router as stream_control_router
-from routes.transaction import router as transaction_router
-from routes.stripe_payment import router as stripe_payment_router
-from routes.stripe_connect import router as stripe_connect_router
-from routes.internal_preview import router as preview_router
-from services.stream_cleanup import stream_cleanup_loop
+from modules.auth.router import router as auth_router
+from modules.stream.routers.stream_router import router as stream_router
+from modules.stream.routers.stream_ticket_router import router as sfu_ticket_router
+from modules.stream.routers.stream_server_router import router as sfu_internal_router
+from modules.stream.routers.stream_control_router import router as stream_control_router
+from modules.payment.routers.transaction_router import router as transaction_router
+from modules.payment.routers.stripe_payment_router import router as stripe_payment_router
+from modules.payment.routers.stripe_connect_router import router as stripe_connect_router
+from modules.stream.routers.internal_preview_router import router as preview_router
+from modules.stream.services.stream_cleanup import stream_cleanup_loop
 
 
 @asynccontextmanager

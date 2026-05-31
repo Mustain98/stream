@@ -4,7 +4,7 @@ from sqlmodel import SQLModel
 
 
 class BlockUserRequest(SQLModel):
-    reason: Optional[str] = "blocked"
+    reason: str
 
 
 class UnblockUserRequest(SQLModel):

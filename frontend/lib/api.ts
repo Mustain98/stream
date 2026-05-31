@@ -102,6 +102,11 @@ export const api = {
       cache: "no-store",
     }),
 
+  getUpcomingStreams: () =>
+    request<StreamSummary[]>("/stream/upcoming", {
+      cache: "no-store",
+    }),
+
   getOwnedStreams: (token: string) =>
     request<StreamSummary[]>("/stream/owned", {
       token,
@@ -125,7 +130,7 @@ export const api = {
       cache: "no-store",
     }),
 
-  createStream: (token: string, payload: { title: string; description: string }) =>
+  createStream: (token: string, payload: { title: string; description: string; min_duration_seconds: number; scheduled_start_time?: string; scheduled_end_time?: string }) =>
     request<StreamDetailsResponse["stream"]>("/stream/create", {
       method: "POST",
       token,

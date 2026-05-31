@@ -41,6 +41,18 @@ export function LiveStreamCard({
 
       <h2>{stream.title}</h2>
 
+      {stream.broadcaster_username && (
+        <p className="muted" style={{ marginBottom: "0.5rem" }}>
+          By <strong>{stream.broadcaster_username}</strong>
+        </p>
+      )}
+
+      {stream.scheduled_start_time && (
+        <p className="muted" style={{ marginBottom: "0.5rem", color: "var(--accent-color)" }}>
+          Scheduled: {new Date(stream.scheduled_start_time).toLocaleString()}
+        </p>
+      )}
+
       <p className="muted">{stream.description || "No description yet."}</p>
 
       <div className="card-footer">

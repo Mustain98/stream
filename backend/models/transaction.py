@@ -23,6 +23,12 @@ class TransactionStatus(str, enum.Enum):
     REFUND_FAILED = "refund_failed"
 
 
+class TransferStatus(str, enum.Enum):
+    NOT_TRANSFERRED = "not_transferred"
+    TRANSFERRED = "transferred"
+    TRANSFER_FAILED = "transfer_failed"
+
+
 class StreamAccessSetting(SQLModel, table=True):
     __tablename__ = "stream_access_settings"
 
@@ -61,11 +67,7 @@ class StreamTransaction(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
 
     stream_id: str = Field(foreign_key="streams.id", index=True)
-
-    # Viewer who pays
     user_id: str = Field(foreign_key="users.id", index=True)
-
-    # Broadcaster who should receive money
     broadcaster_id: str = Field(foreign_key="users.id", index=True)
 
     amount: int
@@ -78,20 +80,19 @@ class StreamTransaction(SQLModel, table=True):
 
     provider: str = Field(default="manual")
 
-    # Stripe Checkout Session id: cs_test_...
     provider_session_id: Optional[str] = Field(default=None, index=True)
-
-    # Stripe PaymentIntent id: pi_...
     provider_payment_id: Optional[str] = Field(default=None, index=True)
-
-    # Stripe refund id: re_...
     provider_refund_id: Optional[str] = Field(default=None, index=True)
 
-    # Stable key used for safe Stripe retry
     provider_idempotency_key: Optional[str] = Field(default=None, index=True, unique=True)
 
-    # Stripe connected account destination: acct_...
+    # Keep this only to remember broadcaster account destination.
+    # New flow does NOT transfer during checkout.
     stripe_transfer_destination: Optional[str] = Field(default=None, index=True)
+
+    # New isolated transfer fields.
+    provider_transfer_id: Optional[str] = Field(default=None, index=True)
+    transfer_status: TransferStatus = Field(default=TransferStatus.NOT_TRANSFERRED)
 
     failure_reason: Optional[str] = None
     refund_reason: Optional[str] = None
@@ -100,6 +101,7 @@ class StreamTransaction(SQLModel, table=True):
     checkout_created_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
     refunded_at: Optional[datetime] = None
+    transferred_at: Optional[datetime] = None
 
 
 class StripeWebhookEvent(SQLModel, table=True):
@@ -107,9 +109,7 @@ class StripeWebhookEvent(SQLModel, table=True):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
 
-    # Stripe event id: evt_...
     stripe_event_id: str = Field(index=True, unique=True)
-
     event_type: str = Field(index=True)
     object_id: Optional[str] = Field(default=None, index=True)
 

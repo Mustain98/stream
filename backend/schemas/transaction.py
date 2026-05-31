@@ -21,10 +21,6 @@ class StreamAccessResponse(SQLModel):
     access_mode: str
 
 
-class CreateManualTransactionRequest(SQLModel):
-    user_id: Optional[str] = None
-
-
 class TransactionResponse(SQLModel):
     id: str
     stream_id: str

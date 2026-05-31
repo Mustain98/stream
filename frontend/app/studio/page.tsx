@@ -23,6 +23,9 @@ export default function StudioPage() {
 function StudioContent() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [minDurationSeconds, setMinDurationSeconds] = useState(0);
+  const [scheduledStartTime, setScheduledStartTime] = useState("");
+  const [scheduledEndTime, setScheduledEndTime] = useState("");
   const [ownedStreams, setOwnedStreams] = useState<StreamSummary[]>([]);
   const [isLoadingOwned, setIsLoadingOwned] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +73,13 @@ function StudioContent() {
     setError(null);
 
     try {
-      const stream = await api.createStream(token, { title, description });
+      const stream = await api.createStream(token, { 
+        title, 
+        description,
+        min_duration_seconds: minDurationSeconds,
+        ...(scheduledStartTime ? { scheduled_start_time: new Date(scheduledStartTime).toISOString() } : {}),
+        ...(scheduledEndTime ? { scheduled_end_time: new Date(scheduledEndTime).toISOString() } : {})
+      });
       setOwnedStreams((current) => [
         {
           id: stream.id,
@@ -146,6 +155,30 @@ function StudioContent() {
               required
               rows={5}
               value={description}
+            />
+          </label>
+          <label className="field">
+            <span>Minimum Duration (seconds)</span>
+            <input
+              type="number"
+              onChange={(event) => setMinDurationSeconds(parseInt(event.target.value) || 0)}
+              value={minDurationSeconds}
+            />
+          </label>
+          <label className="field">
+            <span>Scheduled Start Time (optional)</span>
+            <input
+              type="datetime-local"
+              onChange={(event) => setScheduledStartTime(event.target.value)}
+              value={scheduledStartTime}
+            />
+          </label>
+          <label className="field">
+            <span>Scheduled End Time (optional)</span>
+            <input
+              type="datetime-local"
+              onChange={(event) => setScheduledEndTime(event.target.value)}
+              value={scheduledEndTime}
             />
           </label>
           {error ? <p className="error-banner">{error}</p> : null}

@@ -9,7 +9,8 @@ import { api } from "../lib/api";
 import type { StreamSummary } from "../lib/types";
 
 export default function HomePage() {
-  const [streams, setStreams] = useState<StreamSummary[]>([]);
+  const [liveStreams, setLiveStreams] = useState<StreamSummary[]>([]);
+  const [upcomingStreams, setUpcomingStreams] = useState<StreamSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useSession();
@@ -17,9 +18,15 @@ export default function HomePage() {
   useEffect(() => {
     const loadStreams = async () => {
       try {
-        const liveStreams = await api.getLiveStreams();
-        setStreams(
-          user ? liveStreams.filter((stream) => stream.broadcaster_id !== user.id) : liveStreams
+        const [fetchedLive, fetchedUpcoming] = await Promise.all([
+          api.getLiveStreams(),
+          api.getUpcomingStreams(),
+        ]);
+        setLiveStreams(
+          user ? fetchedLive.filter((stream) => stream.broadcaster_id !== user.id) : fetchedLive
+        );
+        setUpcomingStreams(
+          user ? fetchedUpcoming.filter((stream) => stream.broadcaster_id !== user.id) : fetchedUpcoming
         );
       } catch (loadError) {
         const message = loadError instanceof Error ? loadError.message : "Failed to load streams";
@@ -71,10 +78,10 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      {!isLoading && !error && streams.length === 0 ? (
+      {!isLoading && !error && liveStreams.length === 0 && upcomingStreams.length === 0 ? (
         <section className="center-card">
           <p className="eyebrow">Quiet stage</p>
-          <h2>No live streams are running right now.</h2>
+          <h2>No live or upcoming streams right now.</h2>
           <p className="muted">
             Open the studio, start a stream, and this page will immediately become the browse grid
             viewers can click.
@@ -82,11 +89,25 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      {!isLoading && !error && streams.length > 0 ? (
+      {!isLoading && !error && liveStreams.length > 0 ? (
         <section className="stream-grid">
-          {streams.map((stream) => (
+          {liveStreams.map((stream) => (
             <LiveStreamCard key={stream.id} stream={stream} />
           ))}
+        </section>
+      ) : null}
+
+      {!isLoading && !error && upcomingStreams.length > 0 ? (
+        <section className="upcoming-section" style={{ marginTop: "3rem" }}>
+          <div style={{ marginBottom: "1.5rem" }}>
+            <p className="eyebrow">On the horizon</p>
+            <h2>Upcoming Streams</h2>
+          </div>
+          <div className="stream-grid">
+            {upcomingStreams.map((stream) => (
+              <LiveStreamCard key={stream.id} stream={stream} />
+            ))}
+          </div>
         </section>
       ) : null}
     </section>

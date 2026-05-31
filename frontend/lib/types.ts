@@ -17,7 +17,10 @@ export type StreamSummary = {
   description: string | null;
   status: string;
   broadcaster_id: string;
+  broadcaster_username?: string | null;
   started_at: string | null;
+  scheduled_start_time?: string | null;
+  scheduled_end_time?: string | null;
   viewer_count?: number;
   earnings_summary?: StreamEarningsSummary | null;
 };
@@ -30,6 +33,8 @@ export type StreamRecord = {
   broadcaster_id: string;
   started_at: string | null;
   ended_at: string | null;
+  scheduled_start_time?: string | null;
+  scheduled_end_time?: string | null;
   created_at: string;
 };
 

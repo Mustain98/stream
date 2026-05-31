@@ -40,7 +40,7 @@ class MediaRouter:
         if source_track is None:
             return
 
-        relayed_track = self.relay.subscribe(source_track)
+        relayed_track = self.relay.subscribe(source_track,buffered=False)
         subscriber.pc.addTrack(relayed_track)
         subscriber.attached_kinds.add(kind)
 

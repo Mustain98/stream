@@ -10,6 +10,7 @@ class StreamStatus(str, enum.Enum):
     LIVE = "live"
     ENDED = "ended"
 
+
 class EventType(str, enum.Enum):
     START = "start"
     END = "end"
@@ -31,9 +32,11 @@ class Stream(SQLModel, table=True):
     status: StreamStatus = Field(default=StreamStatus.OFFLINE)
 
     broadcaster_id: str = Field(foreign_key="users.id", index=True)
-
+    min_duration_seconds: int 
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
+    scheduled_start_time: Optional[datetime] = None
+    scheduled_end_time: Optional[datetime] = None
     live_expires_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

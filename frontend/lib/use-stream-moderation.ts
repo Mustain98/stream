@@ -42,16 +42,20 @@ export function useStreamModeration({ token, streamId }: UseStreamModerationOpti
         return;
       }
 
-      const confirmed = window.confirm(`Block ${username} from this stream?`);
+      const reason = window.prompt(
+        `Block ${username} from this stream?\n\nPlease enter a reason for blocking (optional):`
+      );
 
-      if (!confirmed) {
+      if (reason === null) {
         return;
       }
+
+      const finalReason = reason.trim() || "blocked";
 
       try {
         setModerationError(null);
 
-        await api.blockViewer(token, streamId, userId, "blocked");
+        await api.blockViewer(token, streamId, userId, finalReason);
 
         setBlockedUsers((current) => {
           const alreadyExists = current.some((blocked) => blocked.user_id === userId);
@@ -66,7 +70,7 @@ export function useStreamModeration({ token, streamId }: UseStreamModerationOpti
               stream_id: streamId,
               user_id: userId,
               username,
-              reason: "blocked",
+              reason: finalReason,
               created_at: new Date().toISOString(),
             },
             ...current,

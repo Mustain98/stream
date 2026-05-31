@@ -7,7 +7,7 @@ import { PaymentRequiredOverlay } from "../../../components/payment-required-ove
 import { RequireAuth } from "../../../components/require-auth";
 import { useSession } from "../../../components/session-provider";
 import { StreamChatPanel } from "../../../components/stream-chat-panel";
-import { isLiveStatus } from "../../../lib/stream-utils";
+import { isLiveStatus, isEndedStatus } from "../../../lib/stream-utils";
 import { useSfuViewer } from "../../../lib/use-sfu-viewer";
 import { useStreamAccess } from "../../../lib/use-stream-access";
 import { useStreamRoom } from "../../../lib/use-stream-room";
@@ -283,7 +283,16 @@ function WatchContent() {
                 </div>
               ) : null}
 
-              {!isLive ? (
+              {isEndedStatus(stream?.status) ? (
+                <div className="pause-overlay" style={{ flexDirection: "column", gap: "8px", textAlign: "center" }}>
+                  <strong>Stream has ended</strong>
+                  <div style={{ fontSize: "0.9em", opacity: 0.8 }}>
+                    <div>ID: {stream?.id}</div>
+                    {stream?.started_at && <div>Started: {new Date(stream.started_at).toLocaleString()}</div>}
+                    {stream?.ended_at && <div>Ended: {new Date(stream.ended_at).toLocaleString()}</div>}
+                  </div>
+                </div>
+              ) : !isLive ? (
                 <div className="pause-overlay">
                   <strong>Stream is not live</strong>
                 </div>
