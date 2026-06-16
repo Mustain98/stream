@@ -21,6 +21,7 @@ export type StreamSummary = {
   started_at: string | null;
   scheduled_start_time?: string | null;
   scheduled_end_time?: string | null;
+  created_at?: string;
   viewer_count?: number;
   earnings_summary?: StreamEarningsSummary | null;
 };
@@ -177,7 +178,66 @@ export type StreamEarningsSummary = {
   updated_at: string;
 };
 
+export type EarningsGraph = {
+  labels: string[];
+  series: {
+    gross_sales: number[];
+    net_earnings: number[];
+    refunds: number[];
+  };
+};
+
+export type SpendGraph = {
+  labels: string[];
+  series: {
+    total_spent: number[];
+    refunds: number[];
+  };
+};
+
+export type EarningsBreakdownRow = {
+  period: string;
+  gross_sales_amount: number;
+  platform_fees_amount: number;
+  net_earnings_amount: number;
+  refunded_amount: number;
+  refund_pending_amount: number;
+  successful_payment_count: number;
+  paid_viewer_count: number;
+  refunded_payment_count: number;
+  refund_pending_count: number;
+};
+
+export type SpendBreakdownRow = {
+  period: string;
+  total_spent_amount: number;
+  refunded_amount: number;
+  successful_payment_count: number;
+  streams_purchased: number;
+};
+
+export type EarningsHistoryResponse = {
+  view: "monthly" | "daily";
+  period: string;
+  summary: Omit<EarningsBreakdownRow, "period">;
+  breakdown: EarningsBreakdownRow[];
+  graph: EarningsGraph;
+  currency: string;
+};
+
+export type SpendHistoryResponse = {
+  view: "monthly" | "daily";
+  period: string;
+  summary: Omit<SpendBreakdownRow, "period">;
+  breakdown: SpendBreakdownRow[];
+  graph: SpendGraph;
+  currency: string;
+};
+
 export type BroadcasterDashboardStats = {
+  period: string;
+  graph: EarningsGraph;
+  currency: string;
   owned_stream_count: number;
   live_stream_count: number;
   ended_stream_count: number;
@@ -191,15 +251,16 @@ export type BroadcasterDashboardStats = {
   refund_pending_amount: number;
   refunded_payment_count: number;
   refund_pending_count: number;
-  currency: string;
 };
 
 export type ViewerDashboardStats = {
-  successful_payment_count: number;
-  purchased_stream_count: number;
-  total_spent_amount: number;
-  refunded_spend_amount: number;
+  period: string;
+  graph: SpendGraph;
   currency: string;
+  successful_payment_count: number;
+  streams_purchased: number;
+  total_spent_amount: number;
+  refunded_amount: number;
 };
 
 export type DashboardPurchase = {

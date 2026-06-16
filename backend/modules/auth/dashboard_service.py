@@ -1,12 +1,15 @@
+from datetime import datetime
+
 from modules.earnings.services.earnings_service import (
+    build_broadcaster_earnings_history,
     build_stream_earnings_summary,
+    build_viewer_spend_history,
     get_recent_purchase_rows,
     list_transactions_for_broadcaster,
     list_transactions_for_stream,
     list_transactions_for_viewer,
-    summarize_broadcaster_earnings,
-    summarize_viewer_spend,
 )
+from models import StreamStatus
 from modules.viewer.services.session_service import get_unique_viewer_count
 from modules.stream.services.stream_service import list_owned_stream_records
 from modules.connect.services.stripe_connect_account_service import get_stripe_connect_account_by_user_id
@@ -69,6 +72,21 @@ def build_user_dashboard(session, user):
     stripe_account = get_stripe_connect_account_by_user_id(session, user.id)
     recent_purchase_rows = get_recent_purchase_rows(session, user.id)
 
+    now = datetime.utcnow()
+    broadcaster_month = build_broadcaster_earnings_history(
+        transactions=broadcaster_transactions,
+        year=now.year,
+        month=now.month,
+    )
+    viewer_month = build_viewer_spend_history(
+        transactions=viewer_transactions,
+        year=now.year,
+        month=now.month,
+    )
+
+    live_stream_count = sum(1 for s in owned_streams if s.status == StreamStatus.LIVE)
+    ended_stream_count = sum(1 for s in owned_streams if s.status == StreamStatus.ENDED)
+
     return {
         "user": {
             "id": user.id,
@@ -78,12 +96,22 @@ def build_user_dashboard(session, user):
             "created_at": user.created_at,
         },
         "stripe_status": build_stripe_status_payload(stripe_account),
-        "broadcaster_stats": summarize_broadcaster_earnings(
-            transactions=broadcaster_transactions,
-            owned_streams=owned_streams,
-            total_unique_viewers=total_unique_viewers,
-        ),
-        "viewer_stats": summarize_viewer_spend(viewer_transactions),
+        "broadcaster_stats": {
+            **broadcaster_month["summary"],
+            "period": broadcaster_month["period"],
+            "graph": broadcaster_month["graph"],
+            "currency": "usd",
+            "owned_stream_count": len(owned_streams),
+            "live_stream_count": live_stream_count,
+            "ended_stream_count": ended_stream_count,
+            "total_unique_viewers": total_unique_viewers,
+        },
+        "viewer_stats": {
+            **viewer_month["summary"],
+            "period": viewer_month["period"],
+            "graph": viewer_month["graph"],
+            "currency": "usd",
+        },
         "owned_streams": owned_stream_items,
         "recent_purchases": [
             {

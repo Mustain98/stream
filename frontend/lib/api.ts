@@ -3,7 +3,9 @@ import type {
   BlockedUsersResponse,
   BlockViewerResponse,
   CheckoutResponse,
+  EarningsHistoryResponse,
   SfuTicketResponse,
+  SpendHistoryResponse,
   StreamAccessResponse,
   StreamAccessSettingsPayload,
   StreamDetailsResponse,
@@ -221,9 +223,31 @@ export const api = {
       token,
     }),
   updateMe: (token: string, payload: UserUpdatePayload) =>
-  request<User>("/auth/me", {
-    method: "PATCH",
-    token,
-    body: payload,
-  }),
+    request<User>("/auth/me", {
+      method: "PATCH",
+      token,
+      body: payload,
+    }),
+
+  getEarningsHistory: (token: string, year?: number, month?: number) => {
+    const params = new URLSearchParams();
+    if (year) params.set("year", String(year));
+    if (month) params.set("month", String(month));
+    const qs = params.size ? `?${params.toString()}` : "";
+    return request<EarningsHistoryResponse>(`/auth/earnings/history${qs}`, {
+      token,
+      cache: "no-store",
+    });
+  },
+
+  getSpendHistory: (token: string, year?: number, month?: number) => {
+    const params = new URLSearchParams();
+    if (year) params.set("year", String(year));
+    if (month) params.set("month", String(month));
+    const qs = params.size ? `?${params.toString()}` : "";
+    return request<SpendHistoryResponse>(`/auth/spend/history${qs}`, {
+      token,
+      cache: "no-store",
+    });
+  },
 };

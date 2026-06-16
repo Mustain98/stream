@@ -1,3 +1,5 @@
+import calendar
+from collections import defaultdict
 from datetime import datetime
 
 from sqlmodel import Session, select
@@ -23,6 +25,194 @@ NET_EARNING_STATUSES = {
     TransactionStatus.PAID,
     TransactionStatus.REFUND_FAILED,
 }
+
+
+# ── private helpers ──────────────────────────────────────────────────────────
+
+def _month_key(t: StreamTransaction) -> str:
+    return (t.paid_at or t.created_at).strftime("%Y-%m")
+
+
+def _day_key(t: StreamTransaction) -> str:
+    return (t.paid_at or t.created_at).strftime("%Y-%m-%d")
+
+
+def _get_labels(year: int, month: int | None) -> list[str]:
+    if month:
+        _, days = calendar.monthrange(year, month)
+        return [f"{year:04d}-{month:02d}-{d:02d}" for d in range(1, days + 1)]
+    return [f"{year:04d}-{m:02d}" for m in range(1, 13)]
+
+
+def _filter_by_period(
+    transactions: list[StreamTransaction],
+    year: int,
+    month: int | None,
+) -> list[StreamTransaction]:
+    out = []
+    for t in transactions:
+        dt = t.paid_at or t.created_at
+        if dt.year != year:
+            continue
+        if month and dt.month != month:
+            continue
+        out.append(t)
+    return out
+
+
+def _bucket(
+    transactions: list[StreamTransaction],
+    month: int | None,
+) -> dict[str, list[StreamTransaction]]:
+    buckets: dict[str, list[StreamTransaction]] = defaultdict(list)
+    key_fn = _day_key if month else _month_key
+    for t in transactions:
+        buckets[key_fn(t)].append(t)
+    return dict(buckets)
+
+
+def _agg_broadcaster(transactions: list[StreamTransaction]) -> dict:
+    gross = platform = net = refunded = refund_pending = 0
+    successful = refunded_count = refund_pending_count = 0
+    viewer_ids: set[str] = set()
+
+    for t in transactions:
+        s = t.status
+        if s in CHARGE_SUCCESS_STATUSES:
+            successful += 1
+            gross += t.amount
+            platform += t.platform_fee_amount
+        if s in NET_EARNING_STATUSES:
+            net += t.broadcaster_amount
+            viewer_ids.add(t.user_id)
+        if s == TransactionStatus.REFUNDED:
+            refunded_count += 1
+            refunded += t.amount
+        if s == TransactionStatus.REFUND_PENDING:
+            refund_pending_count += 1
+            refund_pending += t.amount
+
+    return {
+        "gross_sales_amount": gross,
+        "platform_fees_amount": platform,
+        "net_earnings_amount": net,
+        "refunded_amount": refunded,
+        "refund_pending_amount": refund_pending,
+        "successful_payment_count": successful,
+        "paid_viewer_count": len(viewer_ids),
+        "refunded_payment_count": refunded_count,
+        "refund_pending_count": refund_pending_count,
+    }
+
+
+def _agg_viewer(transactions: list[StreamTransaction]) -> dict:
+    total_spent = refunded = successful = 0
+    stream_ids: set[str] = set()
+
+    for t in transactions:
+        s = t.status
+        if s in CHARGE_SUCCESS_STATUSES:
+            successful += 1
+            stream_ids.add(t.stream_id)
+        if s in NET_EARNING_STATUSES:
+            total_spent += t.amount
+        if s == TransactionStatus.REFUNDED:
+            refunded += t.amount
+
+    return {
+        "total_spent_amount": total_spent,
+        "refunded_amount": refunded,
+        "successful_payment_count": successful,
+        "streams_purchased": len(stream_ids),
+    }
+
+
+def _broadcaster_graph(labels: list[str], buckets: dict) -> dict:
+    gross_sales, net_earnings, refunds = [], [], []
+    for label in labels:
+        a = _agg_broadcaster(buckets.get(label, []))
+        gross_sales.append(a["gross_sales_amount"])
+        net_earnings.append(a["net_earnings_amount"])
+        refunds.append(a["refunded_amount"])
+    return {
+        "labels": labels,
+        "series": {
+            "gross_sales": gross_sales,
+            "net_earnings": net_earnings,
+            "refunds": refunds,
+        },
+    }
+
+
+def _viewer_graph(labels: list[str], buckets: dict) -> dict:
+    total_spent, refunds = [], []
+    for label in labels:
+        a = _agg_viewer(buckets.get(label, []))
+        total_spent.append(a["total_spent_amount"])
+        refunds.append(a["refunded_amount"])
+    return {
+        "labels": labels,
+        "series": {
+            "total_spent": total_spent,
+            "refunds": refunds,
+        },
+    }
+
+
+# ── public history builders ───────────────────────────────────────────────────
+
+def build_broadcaster_earnings_history(
+    transactions: list[StreamTransaction],
+    year: int | None = None,
+    month: int | None = None,
+) -> dict:
+    now = datetime.utcnow()
+    year = year or now.year
+    labels = _get_labels(year, month)
+    filtered = _filter_by_period(transactions, year, month)
+    buckets = _bucket(filtered, month)
+
+    breakdown = sorted(
+        [{"period": lbl, **_agg_broadcaster(buckets.get(lbl, []))} for lbl in labels if lbl in buckets],
+        key=lambda x: x["period"],
+        reverse=True,
+    )
+
+    return {
+        "view": "daily" if month else "monthly",
+        "period": f"{year:04d}-{month:02d}" if month else str(year),
+        "summary": _agg_broadcaster(filtered),
+        "breakdown": breakdown,
+        "graph": _broadcaster_graph(labels, buckets),
+        "currency": "usd",
+    }
+
+
+def build_viewer_spend_history(
+    transactions: list[StreamTransaction],
+    year: int | None = None,
+    month: int | None = None,
+) -> dict:
+    now = datetime.utcnow()
+    year = year or now.year
+    labels = _get_labels(year, month)
+    filtered = _filter_by_period(transactions, year, month)
+    buckets = _bucket(filtered, month)
+
+    breakdown = sorted(
+        [{"period": lbl, **_agg_viewer(buckets.get(lbl, []))} for lbl in labels if lbl in buckets],
+        key=lambda x: x["period"],
+        reverse=True,
+    )
+
+    return {
+        "view": "daily" if month else "monthly",
+        "period": f"{year:04d}-{month:02d}" if month else str(year),
+        "summary": _agg_viewer(filtered),
+        "breakdown": breakdown,
+        "graph": _viewer_graph(labels, buckets),
+        "currency": "usd",
+    }
 
 
 def list_transactions_for_stream(

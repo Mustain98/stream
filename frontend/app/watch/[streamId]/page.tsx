@@ -50,6 +50,14 @@ function WatchContent() {
   const shouldShowPayment =
     paymentRequired || streamAccess.access?.access_mode === "payment_required";
 
+  // Viewer can proactively pay while still in preview (before overlay forces them)
+  const canPayProactively = Boolean(
+    streamAccess.access &&
+      streamAccess.access.access_type === "paid" &&
+      !streamAccess.access.has_paid &&
+      !shouldShowPayment
+  );
+
   const canConnectToSfu = Boolean(
     token &&
       stream &&
@@ -311,6 +319,31 @@ function WatchContent() {
                 />
               ) : null}
             </div>
+
+            {canPayProactively && streamAccess.access ? (
+              <div className="proactive-pay-banner">
+                <span>
+                  This stream costs{" "}
+                  <strong>
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: streamAccess.access.currency.toUpperCase(),
+                    }).format(streamAccess.access.price_amount / 100)}
+                  </strong>
+                  {streamAccess.access.free_preview_seconds > 0
+                    ? ` — you have ${streamAccess.access.free_preview_seconds}s of free preview`
+                    : ""}
+                </span>
+                <button
+                  className="primary-button"
+                  disabled={isPaying}
+                  onClick={handlePay}
+                  type="button"
+                >
+                  {isPaying ? "Opening checkout..." : "Buy access now"}
+                </button>
+              </div>
+            ) : null}
 
             <div className="status-bar">
               <span className="status-dot" />

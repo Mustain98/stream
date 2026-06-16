@@ -18,6 +18,7 @@ from modules.moderation.routers.control_router import router as moderation_route
 from modules.payment.routers.transaction_router import router as transaction_router
 from modules.payment.routers.stripe_payment_router import router as stripe_payment_router
 from modules.earnings.routers.earnings_router import router as earnings_router
+from modules.earnings.routers.history_router import router as earnings_history_router
 from modules.connect.routers.stripe_connect_router import router as stripe_connect_router
 from modules.stream.services.stream_cleanup import stream_cleanup_loop
 
@@ -66,6 +67,7 @@ app.include_router(moderation_router)
 app.include_router(transaction_router)
 app.include_router(stripe_payment_router)
 app.include_router(earnings_router)
+app.include_router(earnings_history_router)
 app.include_router(stripe_connect_router)
 
 

@@ -31,6 +31,7 @@ def stream_summary(session: Session, stream: Stream):
         "started_at": stream.started_at,
         "scheduled_start_time": stream.scheduled_start_time,
         "scheduled_end_time": stream.scheduled_end_time,
+        "created_at": stream.created_at,
         "viewer_count": get_unique_viewer_count(session, stream.id),
     }
 
