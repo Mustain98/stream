@@ -35,6 +35,7 @@ function WatchContent() {
   const [isPaying, setIsPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+  const [paymentPollTimedOut, setPaymentPollTimedOut] = useState(false);
 
   const room = useStreamRoom(streamId, token);
   const streamAccess = useStreamAccess({
@@ -147,9 +148,10 @@ function WatchContent() {
     const confirmPayment = async () => {
       setPaymentRequired(false);
       setPaymentError(null);
+      setPaymentPollTimedOut(false);
       setPaymentMessage("Confirming payment...");
 
-      for (let attempt = 1; attempt <= 10; attempt += 1) {
+      for (let attempt = 1; attempt <= 20; attempt += 1) {
         if (cancelled) {
           return;
         }
@@ -160,18 +162,20 @@ function WatchContent() {
           if (latestAccess?.access_mode === "paid" || latestAccess?.has_paid) {
             setPaymentRequired(false);
             setPaymentMessage(null);
+            setPaymentPollTimedOut(false);
             return;
           }
         } catch {
           // streamAccess hook already stores error.
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
 
       if (!cancelled) {
+        setPaymentPollTimedOut(true);
         setPaymentMessage(
-          "Payment is still being confirmed. Refresh in a moment if access does not unlock."
+          "Payment confirmation is taking longer than expected."
         );
       }
     };
@@ -311,6 +315,26 @@ function WatchContent() {
             <div className="status-bar">
               <span className="status-dot" />
               <span>{status}</span>
+              {paymentPollTimedOut ? (
+                <button
+                  onClick={() => {
+                    setPaymentPollTimedOut(false);
+                    setPaymentMessage("Checking payment status...");
+                    void streamAccess.loadAccess().then((access) => {
+                      if (access?.access_mode === "paid" || access?.has_paid) {
+                        setPaymentRequired(false);
+                        setPaymentMessage(null);
+                      } else {
+                        setPaymentPollTimedOut(true);
+                        setPaymentMessage("Payment confirmation is taking longer than expected.");
+                      }
+                    });
+                  }}
+                  style={{ marginLeft: "8px" }}
+                >
+                  Check again
+                </button>
+              ) : null}
             </div>
           </div>
 
