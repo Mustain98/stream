@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from db.session import engine
 from models import Stream, StreamStatus, EventType
 from modules.stream.services.stream_service import mark_stream_ended
-from modules.stream.services.session_viewer import make_active_viewers_inactive
+from modules.viewer.services.session_service import make_active_viewers_inactive
 from modules.stream.services.stream_event_service import create_stream_event
 
 load_dotenv()

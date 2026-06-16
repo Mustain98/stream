@@ -10,7 +10,7 @@ from modules.payment.services.transaction_service import (
     has_processed_stripe_event,
     record_stripe_event_processed,
 )
-from modules.payment.services.stream_payment_settlement_service import stripe_object_to_dict
+from modules.payment.services.settlement_service import stripe_object_to_dict
 from modules.payment.services.payment_flow_service import verify_and_finalize_successful_payment, PaymentFlowError
 
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")

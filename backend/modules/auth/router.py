@@ -10,7 +10,7 @@ from core.security import (
     create_access_token,
     get_current_user,
 )
-from schemas.auth_schema import UserCreate, UserLogin, UserPublic, UserUpdate
+from schemas import UserCreate, UserLogin, UserPublic, UserUpdate
 from modules.auth.dashboard_service import build_user_dashboard
 from modules.auth.user_service import get_user_by_username, get_user_by_email, create_user
 

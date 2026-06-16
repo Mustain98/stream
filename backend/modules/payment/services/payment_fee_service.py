@@ -1,7 +1,8 @@
 import os
 
 
-PLATFORM_FEE_PERCENT = int(os.getenv("PLATFORM_FEE_PERCENT"))
+PLATFORM_FEE_PERCENT = int(os.getenv("PLATFORM_FEE_PERCENT", "10"))
+assert 0 < PLATFORM_FEE_PERCENT <= 50, f"PLATFORM_FEE_PERCENT must be between 1 and 50, got {PLATFORM_FEE_PERCENT}"
 
 
 def calculate_platform_fee(amount: int) -> int:

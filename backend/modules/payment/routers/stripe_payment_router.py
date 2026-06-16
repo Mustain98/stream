@@ -5,7 +5,7 @@ from core.security import get_current_user
 from db.session import get_session
 from core.dependencies import get_valid_stream
 from models import Stream, User
-from schemas.stripe_payment import ReconcileCheckoutRequest
+from schemas import ReconcileCheckoutRequest
 
 from modules.payment.controllers.stripe_payment_controller import (
     create_stripe_checkout_controller,

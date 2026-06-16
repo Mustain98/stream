@@ -1,4 +1,4 @@
-from modules.payment.services.earnings_service import (
+from modules.earnings.services.earnings_service import (
     build_stream_earnings_summary,
     get_recent_purchase_rows,
     list_transactions_for_broadcaster,
@@ -7,9 +7,9 @@ from modules.payment.services.earnings_service import (
     summarize_broadcaster_earnings,
     summarize_viewer_spend,
 )
-from modules.stream.services.session_viewer import get_unique_viewer_count
+from modules.viewer.services.session_service import get_unique_viewer_count
 from modules.stream.services.stream_service import list_owned_stream_records
-from modules.payment.services.stripe_connect_account_service import get_stripe_connect_account_by_user_id
+from modules.connect.services.stripe_connect_account_service import get_stripe_connect_account_by_user_id
 
 
 def build_stripe_status_payload(account):

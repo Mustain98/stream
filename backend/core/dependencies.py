@@ -5,7 +5,7 @@ from core.security import get_current_user
 from db.session import get_session
 from models import Stream, User, StripeConnectAccount
 from modules.stream.services.stream_service import get_stream
-from modules.payment.services.stripe_connect_account_service import get_stripe_connect_account_by_user_id
+from modules.connect.services.stripe_connect_account_service import get_stripe_connect_account_by_user_id
 
 import os
 from dotenv import load_dotenv

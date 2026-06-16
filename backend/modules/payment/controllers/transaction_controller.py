@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlmodel import Session
 
 from models import StreamAccessType, Stream
-from modules.payment.services.earnings_relay_service import relay_stream_earnings_update
+from modules.earnings.services.earnings_relay_service import relay_stream_earnings_update
 from modules.payment.services.transaction_service import (
     get_or_create_access_setting,
     update_access_setting,

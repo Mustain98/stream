@@ -4,12 +4,12 @@ from sqlmodel import Session
 
 from core.stream_ticket import create_sfu_ticket
 from models import StreamStatus, StreamAccessType, Stream, User
-from modules.stream.services.stream_control import is_user_blocked
+from modules.moderation.services.control_service import is_user_blocked
 from modules.payment.services.transaction_service import (
     get_or_create_access_setting,
     has_paid_for_stream,
 )
-from modules.stream.services.preview_service import get_remaining_preview_seconds
+from modules.preview.services.preview_service import get_remaining_preview_seconds
 
 SFU_WS_URL = os.getenv("SFU_WS_URL", "ws://localhost:7001/ws")
 

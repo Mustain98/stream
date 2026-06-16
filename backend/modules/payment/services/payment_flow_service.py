@@ -1,4 +1,3 @@
-import uuid
 from sqlmodel import Session
 
 from models import StreamAccessType, TransactionStatus, Stream
@@ -10,8 +9,8 @@ from modules.payment.services.payment_fee_service import (
     calculate_platform_fee,
     calculate_broadcaster_amount,
 )
-from modules.payment.services.earnings_relay_service import relay_stream_earnings_update
-from modules.payment.services.stripe_connect_account_service import (
+from modules.earnings.services.earnings_relay_service import relay_stream_earnings_update
+from modules.connect.services.stripe_connect_account_service import (
     get_stripe_connect_account_by_user_id,
 )
 from modules.payment.services.transaction_service import (
@@ -28,7 +27,7 @@ from modules.payment.services.transaction_service import (
     get_latest_checkout_transaction,
     record_stripe_event_processed,
 )
-from modules.payment.services.stream_payment_settlement_service import stripe_object_to_dict
+from modules.payment.services.settlement_service import stripe_object_to_dict
 
 
 class PaymentFlowError(Exception):
@@ -120,7 +119,7 @@ def handle_existing_checkout(session: Session, stream_id: str, user_id: str):
 
 
 def initialize_new_stripe_checkout(session: Session, stream: Stream, user_id: str, setting, connect_account, fees: dict):
-    idempotency_key = f"checkout:{stream.id}:{user_id}:{uuid.uuid4()}"
+    idempotency_key = f"checkout:{stream.id}:{user_id}"
 
     transaction = create_pending_transaction(
         session=session,
@@ -193,7 +192,16 @@ def verify_and_finalize_successful_payment(
 
     session.commit()
     session.refresh(transaction)
-    relay_stream_earnings_update(session=session, stream_id=transaction.stream_id)
+
+    # Race condition guard: if the stream already ended and was settled before this
+    # webhook/reconcile arrived, the main settlement found zero PAID transactions and
+    # stamped settlement_completed_at. Settle this late transaction individually now.
+    stream = session.get(Stream, transaction.stream_id)
+    if stream and stream.settlement_completed_at is not None:
+        from modules.payment.services.settlement_service import settle_late_single_transaction
+        settle_late_single_transaction(session, stream, transaction)
+    else:
+        relay_stream_earnings_update(session=session, stream_id=transaction.stream_id)
 
     return {
         "status": "paid",

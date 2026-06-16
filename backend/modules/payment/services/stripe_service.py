@@ -124,7 +124,7 @@ def create_transfer_to_connected_account(
 
 def create_refund_for_payment_intent(
     payment_intent_id: str,
-    reason: str = "requested_by_customer",
+    reason: str | None = None,
 ):
     """
     Refunds viewer payment.
@@ -136,7 +136,8 @@ def create_refund_for_payment_intent(
     if not STRIPE_SECRET_KEY:
         raise RuntimeError("STRIPE_SECRET_KEY is not configured")
 
-    return stripe.Refund.create(
-        payment_intent=payment_intent_id,
-        reason=reason,
-    )
+    params: dict = {"payment_intent": payment_intent_id}
+    if reason:
+        params["reason"] = reason
+
+    return stripe.Refund.create(**params)

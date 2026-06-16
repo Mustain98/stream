@@ -4,7 +4,7 @@ from sqlmodel import Session
 from core.security import get_current_user
 from db.session import get_session
 from models import Stream, User
-from schemas.transaction import StreamAccessSettingsUpdate
+from schemas import StreamAccessSettingsUpdate
 from modules.payment.controllers.transaction_controller import (
     get_stream_access_controller,
     update_stream_access_settings_controller,
@@ -37,7 +37,13 @@ def update_stream_access_settings(
     if payload.access_type.lower() == "paid":
         if payload.price_amount <= 0:
             raise HTTPException(status_code=400, detail="Paid stream must have a price")
-            
+
+        if stream.min_duration_seconds <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Paid streams require a minimum duration (min_duration_seconds) so viewers can be refunded if the stream ends early. Set it when creating the stream.",
+            )
+
         # Verify stripe onboarding via dependency
         require_stripe_onboarding(user, session)
 
